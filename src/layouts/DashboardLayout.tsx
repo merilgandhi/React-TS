@@ -4,14 +4,17 @@ import Header from "../Global/Header";
 
 const DashboardLayout = ({ children }: { children: React.ReactNode }) => {
   return (
-    <div className="flex h-screen">
+    <div className="flex">
 
+      {/* FIXED SIDEBAR */}
       <Sidebar />
 
-      <div className="flex flex-col flex-1 overflow-auto">
+      {/* RIGHT CONTENT AREA */}
+      <div className="flex flex-col flex-1 ml-0 md:ml-64 min-h-screen">
+
         <Header />
 
-        <main className="p-6 bg-slate-100 h-full overflow-auto">
+        <main className="p-6 bg-slate-100 flex-1 overflow-auto">
           {children}
         </main>
       </div>
