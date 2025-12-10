@@ -229,7 +229,7 @@ const Seller: React.FC = () => {
       {/* Drawer */}
       {drawerOpen && (
         <>
-          <div className="fixed top-0 right-0 w-[35rem] max-w-full h-full bg-white shadow-xl z-50 p-6 overflow-y-auto">
+          <div className="fixed top-0 right-0 w-[35] max-w-full h-full bg-white shadow-xl z-50 p-6 overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-semibold">
                 {drawerMode === "create" ? "Create Seller" : "Edit Seller"}
