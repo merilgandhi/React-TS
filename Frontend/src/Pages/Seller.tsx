@@ -43,7 +43,7 @@ const Sellers = () => {
 
       const res = await client.get(`/sellers?${params.toString()}`);
 
-      setSellers(res.data.data|| []);
+      setSellers(res.data.data || []);
       setTotalPages(res.data.totalPages || 1);
     } catch (err) {
       toast.custom(() => <ErrorToast message="Failed to load sellers" />);
@@ -123,9 +123,7 @@ const Sellers = () => {
       fetchSellers();
     } catch (err: any) {
       toast.custom(() => (
-        <ErrorToast
-          message={err?.response?.data?.message || "Action failed"}
-        />
+        <ErrorToast message={err?.response?.data?.message || "Action failed"} />
       ));
     }
   };
@@ -212,7 +210,6 @@ const Sellers = () => {
                     <td className="p-4">{seller.contactNumber}</td>
 
                     <td className="p-4 flex gap-4">
-
                       <button
                         className="text-blue-600 hover:text-blue-800"
                         onClick={() => handleEdit(seller)}
@@ -226,7 +223,6 @@ const Sellers = () => {
                       >
                         <FiTrash2 size={18} />
                       </button>
-
                     </td>
                   </tr>
                 ))

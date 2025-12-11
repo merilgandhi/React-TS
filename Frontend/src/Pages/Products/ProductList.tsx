@@ -1,6 +1,6 @@
 // --- FINAL FIXED PRODUCT LIST ---
 
-import{ useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import client from "../../Services/clientServices";
 import toast from "react-hot-toast";
 import { SuccessToast, ErrorToast } from "../../components/ToastStyles";
@@ -34,7 +34,7 @@ const ProductList = () => {
   const [limit, setLimit] = useState("10");
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-
+  const [statusFilter, setStatusFilter] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState<"create" | "edit" | "view">(
     "create"
@@ -50,21 +50,20 @@ const ProductList = () => {
       params.set("limit", limit);
 
       if (searchName.trim()) params.set("search", searchName);
+      if (statusFilter) params.set("status", statusFilter);
 
       const res = await client.get(`/products?${params.toString()}`);
 
       setProducts(res.data.data || []);
       setTotalPages(res.data.totalPages || 1);
     } catch {
-      toast.custom(() => (
-        <ErrorToast message="Failed to load products" />
-      ));
+      toast.custom(() => <ErrorToast message="Failed to load products" />);
     }
   };
 
   useEffect(() => {
     fetchProducts();
-  }, [searchName, currentPage, limit]);
+  }, [currentPage, limit, searchName, statusFilter]);
 
   const openCreateDrawer = () => {
     setSelectedProductId(null);
@@ -97,16 +96,13 @@ const ProductList = () => {
       fetchProducts();
     } catch (err: any) {
       toast.custom(() => (
-        <ErrorToast
-          message={err?.response?.data?.message || "Delete failed"}
-        />
+        <ErrorToast message={err?.response?.data?.message || "Delete failed"} />
       ));
     }
   };
 
   return (
     <div className="p-6 space-y-4">
-
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Products</h1>
         <button
@@ -129,7 +125,7 @@ const ProductList = () => {
                     placeholder="Search..."
                     value={searchName}
                     onChange={(e) => setSearchName(e.target.value)}
-                    className="px-2 py-1 text-white border rounded text-sm"
+                    className="px-2 py-1 bg-white text-black border rounded text-sm"
                   />
                 </div>
               </th>
@@ -137,9 +133,23 @@ const ProductList = () => {
               <th className="p-3">GST</th>
               <th className="p-3">HSN</th>
 
-              <th className="p-3">
+              <th className="px-4 py-2">
                 <div className="flex flex-col gap-1">
                   <span>Active</span>
+
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => {
+                      setStatusFilter(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="px-2 py-1 border rounded text-black text-sm bg-white"
+                    style={{ width: "90px" }}
+                  >
+                    <option value="">All</option>
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                  </select>
                 </div>
               </th>
 
@@ -159,7 +169,6 @@ const ProductList = () => {
                 const firstVariant = product.variants?.[0];
                 return (
                   <tr key={product.id} className="border-b hover:bg-gray-50">
-
                     <td className="p-3">{product.name}</td>
                     <td className="p-3">{product.gst}%</td>
                     <td className="p-3">{product.hsn}</td>
@@ -170,9 +179,7 @@ const ProductList = () => {
                           Yes
                         </span>
                       ) : (
-                        <span className="text-red-600 font-semibold">
-                          No
-                        </span>
+                        <span className="text-red-600 font-semibold">No</span>
                       )}
                     </td>
 
@@ -180,7 +187,9 @@ const ProductList = () => {
                       {firstVariant?.Variation?.name || "-"}
                     </td>
                     <td className="p-3">{firstVariant?.price ?? "-"}</td>
-                    <td className="p-3">{firstVariant?.productQrCode ?? "-"}</td>
+                    <td className="p-3">
+                      {firstVariant?.productQrCode ?? "-"}
+                    </td>
                     <td className="p-3">{firstVariant?.boxQuantity ?? "-"}</td>
                     <td className="p-3">{firstVariant?.boxQrCode ?? "-"}</td>
                     <td className="p-3">{firstVariant?.stockInHand ?? "-"}</td>
