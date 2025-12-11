@@ -11,6 +11,7 @@ export const listAll = async (req: Request, res: Response) => {
     const { page, limit, offset } = req.pagination!;
 
     const search = req.query.search ? String(req.query.search) : null;
+    const status = req.query.status ? String(req.query.status) : null;
     const createdBy = req.query.createdBy;
     const from = req.query.from;
     const to = req.query.to;
@@ -27,7 +28,10 @@ export const listAll = async (req: Request, res: Response) => {
         { gst: { [Op.like]: `%${search}%` } }
       ];
     }
-
+    if (status !== null) {
+      where.isActive = status === "true";
+    }
+  
     if (createdBy) where.createdBy = Number(createdBy);
 
     if (from && to) where.createdAt = { [Op.between]: [new Date(from), new Date(to)] };
