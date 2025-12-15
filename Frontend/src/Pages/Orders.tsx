@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import client from "../Services/clientServices";
 import toast from "react-hot-toast";
 import { SuccessToast, ErrorToast } from "../components/ToastStyles";
@@ -100,6 +100,55 @@ export default function Orders() {
     return Array.from(map.values());
   }, [products]);
 
+  const [colWidths, setColWidths] = useState<Record<string, number>>({
+    product: 220,
+    subtotal: 120,
+    gst: 100,
+    total: 120,
+  });
+
+  useEffect(() => {
+    if (!globalVariants.length) return;
+    setColWidths((prev) => {
+      const next = { ...prev };
+      for (const gv of globalVariants) {
+        const k = `v-${gv.id}`;
+        if (!next[k]) next[k] = 160;
+      }
+      return next;
+    });
+  }, [globalVariants]);
+
+  const resizingRef = useRef<{ key: string; startX: number; startWidth: number } | null>(null);
+
+  const onMouseMove = useCallback((e: MouseEvent) => {
+    if (!resizingRef.current) return;
+    const { key, startX, startWidth } = resizingRef.current;
+    const newW = Math.max(40, startWidth + (e.clientX - startX));
+    setColWidths((prev) => ({ ...prev, [key]: newW }));
+  }, []);
+
+  const onMouseUp = useCallback(() => {
+    resizingRef.current = null;
+    document.removeEventListener("mousemove", onMouseMove);
+    document.removeEventListener("mouseup", onMouseUp);
+  }, [onMouseMove]);
+
+  // cleanup listeners on unmount
+  useEffect(() => {
+    return () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [onMouseMove, onMouseUp]);
+
+  const onMouseDownResize = (e: React.MouseEvent, key: string) => {
+    e.preventDefault();
+    resizingRef.current = { key, startX: e.clientX, startWidth: colWidths[key] ?? 120 };
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  };
+
   const createOrder = async () => {
     if (!selectedSeller) {
       toast.custom(() => <ErrorToast message="Please select a seller" />);
@@ -159,15 +208,6 @@ export default function Orders() {
     zIndex: 20,
     background: "white",
   };
-  const stickyLeftHeaderStyle: React.CSSProperties = {
-    position: "sticky",
-    left: 0,
-    top: 0,
-    zIndex: 30,
-    background: "#0f1724",
-    color: "white",
-  };
-
   const headerStyle: React.CSSProperties = {
     position: "sticky",
     top: 0,
@@ -176,6 +216,17 @@ export default function Orders() {
     padding: "12px",
     border: "1px solid rgba(0,0,0,0.08)",
   };
+
+  const headerLeftStyle: React.CSSProperties = { ...headerStyle, left: 0, zIndex: 30 };
+
+  const resizerStyle: React.CSSProperties = { position: "absolute", right: 0, top: 0, bottom: 0, width: 8, cursor: "col-resize" };
+  const resizerInnerStyle: React.CSSProperties = { position: "absolute", right: 3, top: "50%", transform: "translateY(-50%)", width: 2, height: "56%", background: "rgba(255,255,255,0.5)" };
+
+  const renderResizer = (key: string) => (
+    <div onMouseDown={(e) => onMouseDownResize(e, key)} style={resizerStyle}>
+      <div style={resizerInnerStyle} />
+    </div>
+  );
 
   const colSpan = globalVariants.length + 4;
 
@@ -222,31 +273,39 @@ export default function Orders() {
         <div className="bg-white border rounded shadow overflow-hidden">
           {/* horizontal scroll wrapper — table inside */}
           <div className="overflow-auto" style={{ maxHeight: "620px" }}>
-            <table className="min-w-full border-collapse">
+            <table className="min-w-full border-collapse" style={{ tableLayout: "fixed" }}>
               <thead>
                 <tr>
                   {/* sticky product header */}
                   <th
                     style={{
-                      ...stickyLeftHeaderStyle,
+                      ...headerLeftStyle,
                       padding: "12px",
                       border: "1px solid rgba(0,0,0,0.08)",
+                      width: colWidths.product,
+                      position: "sticky",
+                      left: 0,
                     }}
-                    className="text-left"
+                    className="text-left relative"
                   >
                     Products
+                    {renderResizer("product")}
                   </th>
 
                   {/* global variant headers */}
-                  {globalVariants.map((gv) => (
-                    <th key={gv.id} style={{ ...headerStyle, padding: "10px 8px" }}>
-                      <div className="text-amber-300 font-medium whitespace-nowrap text-sm">{gv.name}</div>
-                    </th>
-                  ))}
+                  {globalVariants.map((gv) => {
+                    const key = `v-${gv.id}`;
+                    return (
+                      <th key={gv.id} style={{ ...headerStyle, padding: "10px 8px", width: colWidths[key] }} className="relative">
+                        <div className="text-amber-300 font-medium whitespace-nowrap text-sm">{gv.name}</div>
+                            {renderResizer(key)}
+                      </th>
+                    );
+                  })}
 
-                  <th style={headerStyle} className="text-right">Subtotal</th>
-                  <th style={{ ...headerStyle, width: "100px" }} className="text-right">GST</th>
-                  <th style={{ ...headerStyle, width: "110px" }} className="text-right">Total</th>
+                  <th style={{ ...headerStyle, width: colWidths.subtotal }} className="text-right relative">Subtotal{renderResizer("subtotal")}</th>
+                  <th style={{ ...headerStyle, width: colWidths.gst }} className="text-right relative">GST{renderResizer("gst")}</th>
+                  <th style={{ ...headerStyle, width: colWidths.total }} className="text-right">Total</th>
                 </tr>
               </thead>
 
@@ -271,7 +330,7 @@ export default function Orders() {
                       <tr key={product.id} className="align-top">
                         {/* sticky left product cell */}
                         <td
-                          style={stickyLeftStyle as React.CSSProperties}
+                          style={{ ...(stickyLeftStyle as React.CSSProperties), width: colWidths.product }}
                           className="p-3 border bg-slate-50 font-medium"
                         >
                           {product.name}
@@ -368,12 +427,13 @@ export default function Orders() {
               <tfoot>
                 <tr>
                   {/* left footer placeholder (sticky left) */}
-                  <td style={headerStyle}></td>
+                  <td style={headerLeftStyle}></td>
 
                   {/* footer cells for each variant (empty for now) */}
                   {globalVariants.map((gv) => (
                     <td
                       key={gv.id}
+                      style={{ width: colWidths[`v-${gv.id}`] }}
                       className="p-3 border bg-slate-800 text-white text-center text-xs"
                     ></td>
                   ))}
