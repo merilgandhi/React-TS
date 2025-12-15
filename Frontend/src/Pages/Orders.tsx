@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import client from "../Services/clientServices";
 import toast from "react-hot-toast";
 import { SuccessToast, ErrorToast } from "../components/ToastStyles";
-import type { JSX } from "react/jsx-runtime";
+import { variantCellTotals, productTotals, grandTotal } from "../utils/orderCalculations";
 
 type Seller = { id: number; name: string };
 type RawVariant = any;
@@ -18,20 +18,33 @@ type Product = {
   gst: number;
   variants: Variant[];
 };
-export default function Orders(): JSX.Element {
+export default function Orders() {
   const [sellers, setSellers] = useState<Seller[]>([]);
   const [selectedSeller, setSelectedSeller] = useState<number | "">("");
   const [products, setProducts] = useState<Product[]>([]);
-  const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [sellerQuantities, setSellerQuantities] = useState<
+    Record<number, Record<string, number>>
+  >({});
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
 
+  const quantities =
+    selectedSeller && sellerQuantities[selectedSeller]
+      ? sellerQuantities[selectedSeller]
+      : {};
+
   // helper to key quantities by product + variant
-  const qKey = (pId: number, vId: number) => `${pId}__${vId}`;
-  const getQty = (pId: number, vId: number) =>
-    Number(quantities[qKey(pId, vId)] ?? 0);
-  const setQty = (pId: number, vId: number, val: number) =>
-    setQuantities((prev) => ({ ...prev, [qKey(pId, vId)]: val }));
+  const getQty = (pId: number, vId: number) => Number(quantities[`${pId}__${vId}`] ?? 0);
+  const setQty = (pId: number, vId: number, val: number) => {
+    if (!selectedSeller) return;
+    setSellerQuantities((prev) => ({
+      ...prev,
+      [selectedSeller]: {
+        ...(prev[selectedSeller] || {}),
+        [`${pId}__${vId}`]: val,
+      },
+    }));
+  };
 
   // fetch sellers
   const fetchSellers = async () => {
@@ -76,7 +89,7 @@ export default function Orders(): JSX.Element {
     fetchProducts();
   }, []);
 
-  // build global list of unique variants (preserve first-seen order)
+
   const globalVariants = useMemo(() => {
     const map = new Map<number, { id: number; name: string }>();
     for (const p of products) {
@@ -87,61 +100,6 @@ export default function Orders(): JSX.Element {
     return Array.from(map.values());
   }, [products]);
 
-  // calculation helpers (strips input)
-  const calcBoxes = (strips: number, boxQty: number) => {
-    if (!boxQty || boxQty <= 0) return { boxes: 0, remaining: strips };
-    const boxes = Math.floor(strips / boxQty);
-    const remaining = strips - boxes * boxQty;
-    return { boxes, remaining };
-  };
-  const calcSubtotal = (strips: number, price: number) => strips * price;
-  const calcGstAmount = (subtotal: number, gstPct: number) =>
-    (subtotal * (gstPct ?? 0)) / 100;
-  const calcTotal = (subtotal: number, gstAmt: number) => subtotal + gstAmt;
-
-  // totals for a specific product + variant (returns exists=false if product misses variant)
-  const variantCellTotals = (product: Product, variantId: number) => {
-    const v = product.variants.find((x) => x.id === variantId);
-    if (!v) return { exists: false };
-    const strips = getQty(product.id, v.id);
-    const { boxes, remaining } = calcBoxes(strips, v.boxQuantity);
-    const subtotal = calcSubtotal(strips, v.price);
-    const gstAmount = calcGstAmount(subtotal, product.gst ?? 0);
-    const total = calcTotal(subtotal, gstAmount);
-    return {
-      exists: true,
-      strips,
-      boxes,
-      remaining,
-      subtotal,
-      gstAmount,
-      total,
-      price: v.price,
-      variantName: v.name,
-      boxQuantity: v.boxQuantity,
-    };
-  };
-
-  // product-level totals across all global variants
-  const productTotals = (product: Product) => {
-    let subtotal = 0,
-      gstAmount = 0,
-      total = 0;
-    for (const gv of globalVariants) {
-      const c = variantCellTotals(product, gv.id);
-      if (c.exists) {
-        subtotal += c.subtotal!;
-        gstAmount += c.gstAmount!;
-        total += c.total!;
-      }
-    }
-    return { subtotal, gstAmount, total };
-  };
-
-  const grandTotal = () =>
-    products.reduce((acc, p) => acc + productTotals(p).total, 0);
-
-  // create order payload & API call
   const createOrder = async () => {
     if (!selectedSeller) {
       toast.custom(() => <ErrorToast message="Please select a seller" />);
@@ -151,18 +109,13 @@ export default function Orders(): JSX.Element {
     const items: any[] = [];
     for (const p of products) {
       for (const gv of globalVariants) {
-        const c = variantCellTotals(p, gv.id);
+        const c = variantCellTotals(p, gv.id, getQty);
         if (!c.exists) continue;
         if (!c.strips || c.strips <= 0) continue;
         items.push({
           productId: p.id,
-          variantId: gv.id,
-          strips: c.strips,
-          boxes: c.boxes,
-          remainingStrips: c.remaining,
-          pricePerStrip: c.price,
-          subtotal: c.subtotal,
-          gstAmount: c.gstAmount,
+          productVariantId: gv.id,
+          quantity: c.strips,
           total: c.total,
         });
       }
@@ -175,16 +128,19 @@ export default function Orders(): JSX.Element {
 
     try {
       setCreating(true);
-      const res = await client.post("/orders", {
+      const res = await client.post("/orders/sell", {
         sellerId: selectedSeller,
         items,
-        grandTotal: grandTotal(),
+        grandTotal: grandTotal(products, globalVariants, getQty),
       });
       toast.custom(() => (
         <SuccessToast message={res?.data?.message || "Order created"} />
       ));
-      // reset quantities
-      setQuantities({});
+      setSellerQuantities((prev) => {
+        const copy = { ...prev };
+        delete copy[selectedSeller as number];
+        return copy;
+      });
     } catch (err: any) {
       toast.custom(() => (
         <ErrorToast
@@ -195,7 +151,7 @@ export default function Orders(): JSX.Element {
       setCreating(false);
     }
   };
- 
+
   // sticky left inline styles
   const stickyLeftStyle: React.CSSProperties = {
     position: "sticky",
@@ -212,6 +168,17 @@ export default function Orders(): JSX.Element {
     color: "white",
   };
 
+  const headerStyle: React.CSSProperties = {
+    position: "sticky",
+    top: 0,
+    background: "#0f1724",
+    color: "white",
+    padding: "12px",
+    border: "1px solid rgba(0,0,0,0.08)",
+  };
+
+  const colSpan = globalVariants.length + 4;
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -220,7 +187,7 @@ export default function Orders(): JSX.Element {
           <button
             onClick={createOrder}
             disabled={creating}
-            className="px-4 py-2 bg-amber-500 text-slate-900 rounded font-semibold"
+            className="px-4 py-2 bg-slate-900 text-white rounded font-semibold"
           >
             {creating ? "Creating..." : "Create Order"}
           </button>
@@ -272,89 +239,34 @@ export default function Orders(): JSX.Element {
 
                   {/* global variant headers */}
                   {globalVariants.map((gv) => (
-                    <th
-                      key={gv.id}
-                      style={{
-                        position: "sticky",
-                        top: 0,
-                        background: "#0f1724",
-                        color: "white",
-                        padding: "10px 8px",
-                        border: "1px solid rgba(0,0,0,0.08)",
-                      }}
-                    >
-                      <div className="text-amber-300 font-medium whitespace-nowrap text-sm">
-                        {gv.name}
-                      </div>
+                    <th key={gv.id} style={{ ...headerStyle, padding: "10px 8px" }}>
+                      <div className="text-amber-300 font-medium whitespace-nowrap text-sm">{gv.name}</div>
                     </th>
                   ))}
 
-                  <th
-                    style={{
-                      position: "sticky",
-                      top: 0,
-                      background: "#0f1724",
-                      color: "white",
-                      padding: "12px",
-                      border: "1px solid rgba(0,0,0,0.08)",
-                    }}
-                    className="text-right"
-                  >
-                    Subtotal
-                  </th>
-                  <th
-                    style={{
-                      position: "sticky",
-                      top: 0,
-                      background: "#0f1724",
-                      color: "white",
-                      padding: "12px",
-                      border: "1px solid rgba(0,0,0,0.08)",
-                      width: "100px",
-                    }}
-                    className="text-right"
-                  >
-                    GST
-                  </th>
-                  <th
-                    style={{
-                      position: "sticky",
-                      top: 0,
-                      background: "#0f1724",
-                      color: "white",
-                      padding: "12px",
-                      border: "1px solid rgba(0,0,0,0.08)",
-                      width: "110px",
-                    }}
-                    className="text-right"
-                  >
-                    Total
-                  </th>
+                  <th style={headerStyle} className="text-right">Subtotal</th>
+                  <th style={{ ...headerStyle, width: "100px" }} className="text-right">GST</th>
+                  <th style={{ ...headerStyle, width: "110px" }} className="text-right">Total</th>
                 </tr>
               </thead>
 
               <tbody>
                 {loading ? (
                   <tr>
-                    <td
-                      colSpan={3 + globalVariants.length}
-                      className="p-6 text-center"
-                    >
+                    <td colSpan={colSpan} className="p-6 text-center">
                       Loading products...
                     </td>
                   </tr>
                 ) : products.length === 0 ? (
                   <tr>
-                    <td
-                      colSpan={3 + globalVariants.length}
-                      className="p-6 text-center"
-                    >
+                    <td colSpan={colSpan} className="p-6 text-center">
                       No products available
                     </td>
                   </tr>
                 ) : (
                   products.map((product) => {
-                    const pTotals = productTotals(product);
+                    const pTotals = productTotals(product, globalVariants, getQty);
+
                     return (
                       <tr key={product.id} className="align-top">
                         {/* sticky left product cell */}
@@ -367,7 +279,7 @@ export default function Orders(): JSX.Element {
 
                         {/* variant cells in same order as headers */}
                         {globalVariants.map((gv) => {
-                          const c = variantCellTotals(product, gv.id);
+                          const c = variantCellTotals(product, gv.id, getQty);
                           if (!c.exists) {
                             return (
                               <td
@@ -382,23 +294,23 @@ export default function Orders(): JSX.Element {
                           // NEW 3-box compact layout
                           return (
                             <td key={gv.id} className="p-3 border align-top">
-                              <div className="bg-[#f8fafc] rounded p-2 text-xs text-slate-700 border border-slate-300">
+                              <div className="bg-[#f8fafc] rounded p-2 text-xs text-slate-700 border border-slate-300 ">
                                 {/* header row: variant name + price */}
                                 <div className="flex justify-between items-center mb-2">
                                   <div className="text-slate-900 font-semibold text-sm">
                                     {c.variantName}
                                   </div>
                                   <div className="text-[11px] text-slate-600">
-                                    ₹{c.price} GST {product.gst}%
+                                    ₹{c.price} GST({product.gst}%)
                                   </div>
                                 </div>
 
                                 {/* three boxes */}
-                                <div className="flex gap-2">
+                                <div className="flex gap-2 w-full">
                                   {/* Strip Quantity */}
                                   <div className="flex flex-col items-center w-1/3">
                                     <div className="text-[10px] text-slate-600 mb-1">
-                                      Quantity[Strips]
+                                      Qty[Strips]
                                     </div>
                                     <input
                                       type="number"
@@ -444,15 +356,9 @@ export default function Orders(): JSX.Element {
                         })}
 
                         {/* Subtotal, GST, Total */}
-                        <td className="p-3 border text-right">
-                          ₹ {pTotals.subtotal.toFixed(2)}
-                        </td>
-                        <td className="p-3 border text-right">
-                        ₹ {calcGstAmount(pTotals.subtotal, product.gst ?? 0).toFixed(2)}
-                        </td>
-                        <td className="p-3 border text-right font-semibold">
-                          ₹ {pTotals.total.toFixed(2)}
-                        </td>
+                        <td className="p-3 border text-right">₹ {pTotals.subtotal.toFixed(2)}</td>
+                        <td className="p-3 border text-right">₹ {pTotals.gstAmount.toFixed(2)}</td>
+                        <td className="p-3 border text-right font-semibold">₹ {pTotals.total.toFixed(2)}</td>
                       </tr>
                     );
                   })
@@ -462,16 +368,7 @@ export default function Orders(): JSX.Element {
               <tfoot>
                 <tr>
                   {/* left footer placeholder (sticky left) */}
-                  <td
-                    style={{
-                      position: "sticky",
-                      left: 0,
-                      background: "#0f1724",
-                      color: "white",
-                      padding: "12px",
-                      border: "1px solid rgba(0,0,0,0.08)",
-                    }}
-                  ></td>
+                  <td style={headerStyle}></td>
 
                   {/* footer cells for each variant (empty for now) */}
                   {globalVariants.map((gv) => (
@@ -488,7 +385,7 @@ export default function Orders(): JSX.Element {
                     —
                   </td>
                   <td className="p-3 border bg-slate-800 text-white text-right font-bold">
-                    ₹ {grandTotal().toFixed(2)}
+                    ₹ {grandTotal(products, globalVariants, getQty).toFixed(2)}
                   </td>
                 </tr>
               </tfoot>
