@@ -67,12 +67,13 @@ export const listAll = async (req: Request, res: Response) => {
       totalPages: Math.ceil(count / limit)
     });
 
-  } catch (err) {
-    console.error(err);
+  } catch (err: any) {
+    console.error("LIST VARIATIONS ERROR:", err);
     return res.status(500).json({
+      success: false,
+      statusCode: 500,
       message: "Failed to fetch variations",
-      status: false,
-      statuscode: 500,
+      details: process.env.NODE_ENV === "development" ? err.message : undefined,
     });
   }
 };
@@ -88,25 +89,27 @@ export const getById = async (req: Request, res: Response) => {
     const variation = await Variation.findByPk(id);
     if (!variation) {
       return res.status(404).json({
+        success: false,
+        statusCode: 404,
         message: "Variation not found",
-        status: false,
-        statuscode: 404,
+        variationId: id,
       });
     }
 
     return res.status(200).json({
+      success: true,
+      statusCode: 200,
       message: "Variation fetched successfully",
-      status: true,
-      statuscode: 200,
       variation,
     });
 
-  } catch (err) {
-    console.error(err);
+  } catch (err: any) {
+    console.error("GET VARIATION BY ID ERROR:", err);
     return res.status(500).json({
-      message: "failed to fetch variation",
-      status: false,
-      statuscode: 500,
+      success: false,
+      statusCode: 500,
+      message: "Failed to fetch variation",
+      details: process.env.NODE_ENV === "development" ? err.message : undefined,
     });
   }
 };
@@ -134,12 +137,13 @@ export const create = async (req: Request, res: Response) => {
       variation,
     });
 
-  } catch (err) {
-    console.error(err);
+  } catch (err: any) {
+    console.error("CREATE VARIATION ERROR:", err);
     return res.status(500).json({
+      success: false,
+      statusCode: 500,
       message: "Failed to create variation",
-      status: false,
-      statuscode: 500,
+      details: process.env.NODE_ENV === "development" ? err.message : undefined,
     });
   }
 };
@@ -176,12 +180,13 @@ export const update = async (req: Request, res: Response) => {
       variation
     });
 
-  } catch (err) {
-    console.error(err);
+  } catch (err: any) {
+    console.error("UPDATE VARIATION ERROR:", err);
     return res.status(500).json({
-      message: "Variation already exists",
-      status: false,
-      statuscode: 500,
+      success: false,
+      statusCode: 500,
+      message: "Failed to update variation",
+      details: process.env.NODE_ENV === "development" ? err.message : undefined,
     });
   }
 };
@@ -211,12 +216,13 @@ export const remove = async (req: Request, res: Response) => {
       statuscode: 200,
     });
 
-  } catch (err) {
-    console.error(err);
+  } catch (err: any) {
+    console.error("DELETE VARIATION ERROR:", err);
     return res.status(500).json({
+      success: false,
+      statusCode: 500,
       message: "Failed to delete variation",
-      status: false,
-      statuscode: 500,
+      details: process.env.NODE_ENV === "development" ? err.message : undefined,
     });
   }
 };
@@ -246,12 +252,13 @@ export const restore = async (req: Request, res: Response) => {
       statuscode: 200,
     });
 
-  } catch (err) {
-    console.error(err);
+  } catch (err: any) {
+    console.error("RESTORE VARIATION ERROR:", err);
     return res.status(500).json({
+      success: false,
+      statusCode: 500,
       message: "Failed to restore variation",
-      status: false,
-      statuscode: 500,
+      details: process.env.NODE_ENV === "development" ? err.message : undefined,
     });
   }
 };

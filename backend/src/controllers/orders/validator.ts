@@ -87,6 +87,13 @@ export const createOrderSchema = yup.object({
           .integer()
           .positive()
           .required("quantity is required"),
+
+        gstPercent: yup
+          .number()
+          .typeError("gstPercent must be a number")
+          .min(0, "GST cannot be negative")
+          .max(100, "GST cannot exceed 100")
+          .notRequired(),
       })
     )
     .min(1, "At least one order item is required")

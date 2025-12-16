@@ -55,14 +55,14 @@ export const checkBarcode = async (req: Request, res: Response) => {
       message: "Product found",
       data: responseData,
     });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ 
-      status:false,
-      statusCode:500,
-      message: "Unable To Fetch QrCode",
-      
-     });
+  } catch (err: any) {
+    console.error("CHECK BARCODE ERROR:", err);
+    return res.status(500).json({
+      success: false,
+      statusCode: 500,
+      message: "Unable to fetch product for given barcode",
+      details: process.env.NODE_ENV === "development" ? err.message : undefined,
+    });
   }
 };
 
@@ -113,12 +113,19 @@ export const createProductFromScan = async (req: Request, res: Response) => {
       productVariation: newPV
     });
 
-  } catch (err) {
-    console.error(err);
+  } catch (err: any) {
+    console.error("CREATE FROM SCAN ERROR:", err);
     await t.rollback();
-    return res.status(500).json({ message: "Server Error" });
+    return res.status(500).json({
+      success: false,
+      statusCode: 500,
+      message: "Failed to create product from scan",
+      details: process.env.NODE_ENV === "development" ? err.message : undefined,
+    });
   }
 };
+
+
 
 
 
@@ -126,21 +133,25 @@ export const createOrder = async (req: Request, res: Response) => {
   const t = await sequelize.transaction();
 
   try {
-    const sellerId = req.body.sellerId;
-    const items = req.body.items; 
+    const { sellerId, items } = req.body;
 
-    if (!sellerId || !Array.isArray(items) || items.length === 0) {
+    if (!sellerId) {
       await t.rollback();
       return res.status(400).json({
         success: false,
-        message: "Invalid order payload",
+        message: "sellerId is required",
       });
     }
 
-    let subtotal = 0;
-    let gstTotal = 0;
+    if (!Array.isArray(items) || items.length === 0) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "items must be a non-empty array",
+      });
+    }
 
- 
+    // 1️⃣ Create order first
     const order = await Orders.create(
       {
         sellerId,
@@ -152,69 +163,97 @@ export const createOrder = async (req: Request, res: Response) => {
       { transaction: t }
     );
 
+    let subtotal = 0;
+    let gstTotal = 0;
 
-    for (const item of items) {
-      const { productVariationId, quantity } = item;
+    // 2️⃣ Loop items
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
 
-      if (!productVariationId || quantity <= 0) {
+      const qty = Number(item.quantity);
+      if (!item.productVariationId || !Number.isInteger(qty) || qty <= 0) {
         await t.rollback();
         return res.status(400).json({
           success: false,
-          message: "Invalid productVariationId or quantity",
+          message: `Invalid quantity at item index ${i}`,
         });
       }
 
-      const [affected] = await ProductVariation.update(
-        {
-          stockInHand: sequelize.literal(
-            `stockInHand - ${sequelize.escape(quantity)}`
-          ),
-        },
-        {
-          where: {
-            id: productVariationId,
-            stockInHand: { [Op.gte]: quantity },
-          },
-          transaction: t,
-        }
-      );
-
-      if (affected === 0) {
-        await t.rollback();
-        return res.status(400).json({
-          success: false,
-          message: "Insufficient stock",
-        });
-      }
-
-      const pv = await ProductVariation.findByPk(productVariationId, {
+      // 3️⃣ Try finding ProductVariation by PK
+      let pv = await ProductVariation.findByPk(item.productVariationId, {
+        include: [{ model: Product }, { model: Variation }],
         transaction: t,
+        lock: t.LOCK.UPDATE,
       });
 
+      // 4️⃣ Fallback: variation.id + productId
+      if (!pv) {
+        const where: any = { variationId: item.productVariationId };
+
+        if (item.productId) {
+          where.productId = item.productId;
+        }
+
+        pv = await ProductVariation.findOne({
+          where,
+          include: [{ model: Product }, { model: Variation }],
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
+      }
+
+      // ❌ Still not found
       if (!pv) {
         await t.rollback();
         return res.status(404).json({
           success: false,
           message: "Product variation not found",
+          details: {
+            productId: item.productId ?? null,
+            productVariationId: item.productVariationId,
+          },
         });
       }
 
-      const unitPrice = Number(pv.price);
-      const gstPercent = Number(pv.gst || 0);
+      // 5️⃣ Stock check
+      if (pv.stockInHand < qty) {
+        await t.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "Insufficient stock",
+          product: pv.Product?.name,
+          variation: pv.Variation?.name,
+          availableStock: pv.stockInHand,
+          requested: qty,
+        });
+      }
 
-      const lineBase = unitPrice * quantity;
-      const lineGst = (lineBase * gstPercent) / 100;
-      const lineTotal = lineBase + lineGst;
+      // 6️⃣ Deduct stock
+      await pv.update(
+        {
+          stockInHand: pv.stockInHand - qty,
+        },
+        { transaction: t }
+      );
+
+      // 7️⃣ Price & GST calc
+      const unitPrice = Number(pv.price);
+      const gstPercent = Number(pv.Product?.gst || 0);
+
+      const lineBase = +(unitPrice * qty).toFixed(2);
+      const lineGst = +((lineBase * gstPercent) / 100).toFixed(2);
+      const lineTotal = +(lineBase + lineGst).toFixed(2);
 
       subtotal += lineBase;
       gstTotal += lineGst;
 
+      // 8️⃣ Create order item
       await OrderItem.create(
         {
           orderId: order.id,
           productId: pv.productId,
-          productVariationId,
-          quantity,
+          productVariationId: pv.id,
+          quantity: qty,
           unitPrice,
           gstPercent,
           gstAmount: lineGst,
@@ -224,9 +263,9 @@ export const createOrder = async (req: Request, res: Response) => {
       );
     }
 
-    const grandTotal = subtotal + gstTotal;
+    const grandTotal = +(subtotal + gstTotal).toFixed(2);
 
-
+    // 9️⃣ Update order totals
     await order.update(
       {
         subtotal,
@@ -241,18 +280,21 @@ export const createOrder = async (req: Request, res: Response) => {
     return res.status(201).json({
       success: true,
       message: "Order created successfully",
-      data:
-      {orderId: order.id,
-      subtotal,
-      gstTotal,
-      grandTotal,}
+      data: {
+        orderId: order.id,
+        subtotal,
+        gstTotal,
+        grandTotal,
+      },
     });
-  } catch (err) {
-    console.error("createOrder error:", err);
+  } catch (err: any) {
+    console.error("CREATE ORDER ERROR:", err);
     await t.rollback();
+
     return res.status(500).json({
       success: false,
       message: "Failed to create order",
+      details: process.env.NODE_ENV === "development" ? err.message : undefined,
     });
   }
 };

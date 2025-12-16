@@ -8,8 +8,18 @@ import { generateToken } from "@middleware/auth"
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"; // use .env
 
 export const getUsers = async (req: Request, res: Response) => {
-  const users = await User.findAll();
-  res.json(users);
+  try {
+    const users = await User.findAll();
+    return res.status(200).json({ success: true, statusCode: 200, data: users });
+  } catch (err: any) {
+    console.error("GET USERS ERROR:", err);
+    return res.status(500).json({
+      success: false,
+      statusCode: 500,
+      message: "Failed to fetch users",
+      details: process.env.NODE_ENV === "development" ? err.message : undefined,
+    });
+  }
 };
 
 export const createUser = async (req: Request, res: Response) => {
@@ -42,11 +52,13 @@ export const createUser = async (req: Request, res: Response) => {
       message: "User created successfully",
       data: safeUser,
     });
-  } catch (err) {
-    console.error(err);
+  } catch (err: any) {
+    console.error("CREATE USER ERROR:", err);
     return res.status(500).json({
-      status: "error",
-      message: "failed to create user",
+      success: false,
+      statusCode: 500,
+      message: "Failed to create user",
+      details: process.env.NODE_ENV === "development" ? err.message : undefined,
     });
   }
 };
@@ -59,13 +71,20 @@ export const loginUser = async (req, res) => {
   });
 
   if (!user) {
-    return res.status(400).json({ message: "Invalid email" });
+    return res.status(400).json({
+      success: false,
+      statusCode: 400,
+      message: "Invalid email or user not found",
+    });
   }
 
   const isMatch = await user.comparePassword(password);
-  console.log(user);
   if (!isMatch) {
-    return res.status(400).json({ message: "Invalid password" });
+    return res.status(400).json({
+      success: false,
+      statusCode: 400,
+      message: "Invalid password",
+    });
   }
 
   const token = generateToken(user.id);

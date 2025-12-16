@@ -20,12 +20,13 @@ export const createSeller = async (req: Request, res: Response) => {
       message: "Seller created successfully",
       data: newSeller,
     });
-  } catch (error) {
-    console.error("CREATE SELLER ERROR:", error);
+  } catch (err: any) {
+    console.error("CREATE SELLER ERROR:", err);
     return res.status(500).json({
       success: false,
       statusCode: 500,
-      message: "Error creating seller",
+      message: "Failed to create seller",
+      details: process.env.NODE_ENV === "development" ? err.message : undefined,
     });
   }
 };
@@ -77,9 +78,14 @@ export const listAll = async (req: Request, res: Response) => {
       currentPage: page,
       totalPages: Math.ceil(count / limit),
     });
-  } catch (err) {
+  } catch (err: any) {
     console.error("LIST SELLERS ERROR:", err);
-    return res.status(500).json({ success: false, statusCode:500,message: "Failed To List All Sellers" });
+    return res.status(500).json({
+      success: false,
+      statusCode: 500,
+      message: "Failed to list sellers",
+      details: process.env.NODE_ENV === "development" ? err.message : undefined,
+    });
   }
 };
 
@@ -111,12 +117,13 @@ export const updateSeller = async (req: Request, res: Response) => {
       message: "Seller updated successfully",
       seller,
     });
-  } catch (error) {
-    console.error("UPDATE SELLER ERROR:", error);
+  } catch (err: any) {
+    console.error("UPDATE SELLER ERROR:", err);
     return res.status(500).json({
       success: false,
       statusCode: 500,
-      message: "Error updating seller",
+      message: "Failed to update seller",
+      details: process.env.NODE_ENV === "development" ? err.message : undefined,
     });
   }
 };
@@ -126,7 +133,15 @@ export const deleteSeller = async (req: Request, res: Response) => {
   try {
     const sellerId = Number(req.params.id);
     const seller = await Seller.findByPk(sellerId);
-    
+    if (!seller) {
+      return res.status(404).json({
+        success: false,
+        statusCode: 404,
+        message: "Seller not found",
+        sellerId,
+      });
+    }
+
     await seller.destroy();
 
     return res.status(200).json({
@@ -134,12 +149,13 @@ export const deleteSeller = async (req: Request, res: Response) => {
       statusCode: 200,
       message: "Seller deleted successfully",
     });
-  } catch (error) {
-    console.error("DELETE SELLER ERROR:", error);
+  } catch (err: any) {
+    console.error("DELETE SELLER ERROR:", err);
     return res.status(500).json({
       success: false,
       statusCode: 500,
-      message: "Error deleting seller",
+      message: "Failed to delete seller",
+      details: process.env.NODE_ENV === "development" ? err.message : undefined,
     });
   }
-}
+} 

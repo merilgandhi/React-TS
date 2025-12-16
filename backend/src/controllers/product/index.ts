@@ -62,9 +62,14 @@ export const listAll = async (req: Request, res: Response) => {
       totalPages: Math.ceil(count / limit)
     });
 
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: "failed to fetch Product" });
+  } catch (err: any) {
+    console.error("LIST PRODUCTS ERROR:", err);
+    return res.status(500).json({
+      success: false,
+      statusCode: 500,
+      message: "Failed to fetch products",
+      details: process.env.NODE_ENV === "development" ? err.message : undefined,
+    });
   }
 };
 
@@ -87,18 +92,29 @@ export const getById = async (req: Request, res: Response) => {
     });
 
     if (!product) {
-      return res.status(404).json({ message: "Product not found" });
+      return res.status(404).json({
+        success: false,
+        statusCode: 404,
+        message: "Product not found",
+        productId: id,
+      });
     }
 
     return res.status(200).json({
+      success: true,
+      statusCode: 200,
       message: "Product fetched successfully",
-      status: true,
       product,
     });
 
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: "failed to fetch by Id" });
+  } catch (err: any) {
+    console.error("GET PRODUCT BY ID ERROR:", err);
+    return res.status(500).json({
+      success: false,
+      statusCode: 500,
+      message: "Failed to fetch product by id",
+      details: process.env.NODE_ENV === "development" ? err.message : undefined,
+    });
   }
 };
 
@@ -138,10 +154,15 @@ export const create = async (req: Request, res: Response) => {
       variants,
     });
 
-  } catch (err) {
-    console.error(err);
+  } catch (err: any) {
+    console.error("CREATE PRODUCT ERROR:", err);
     await t.rollback();
-    return res.status(500).json({ error, message: "Failed To Create Product" });
+    return res.status(500).json({
+      success: false,
+      statusCode: 500,
+      message: "Failed to create product",
+      details: process.env.NODE_ENV === "development" ? err.message : undefined,
+    });
   }
 };
 
@@ -246,10 +267,15 @@ export const update = async (req: Request, res: Response) => {
       product: updatedProduct,
     });
 
-  } catch (err) {
-    console.error(err);
+  } catch (err: any) {
+    console.error("UPDATE PRODUCT ERROR:", err);
     await t.rollback();
-    return res.status(500).json({ message: "Failed To Update" });
+    return res.status(500).json({
+      success: false,
+      statusCode: 500,
+      message: "Failed to update product",
+      details: process.env.NODE_ENV === "development" ? err.message : undefined,
+    });
   }
 };
 
@@ -273,9 +299,14 @@ export const remove = async (req: Request, res: Response) => {
       status: true,
     });
 
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: "Failed To Remove" });
+  } catch (err: any) {
+    console.error("DELETE PRODUCT ERROR:", err);
+    return res.status(500).json({
+      success: false,
+      statusCode: 500,
+      message: "Failed to remove product",
+      details: process.env.NODE_ENV === "development" ? err.message : undefined,
+    });
   }
 };
 
@@ -294,7 +325,11 @@ export const restore = async (req: Request, res: Response) => {
   await product.restore();
 
   return res.status(200).json({
+    success: true,
+    statusCode: 200,
     message: "Product restored successfully",
-    status: true,
   });
 };
+
+// catch block for restore
+// (handled above in try/catch but keep consistent errors in other handlers) 
