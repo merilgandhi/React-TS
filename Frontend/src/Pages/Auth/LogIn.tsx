@@ -30,7 +30,6 @@ const LogIn: React.FC = () => {
     onSubmit: async (values, { setSubmitting, setErrors }) => {
       try {
         const res = await client.post("/login", values);
-
         const token = res.data?.data?.token;
 
         const user = {

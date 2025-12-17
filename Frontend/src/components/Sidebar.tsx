@@ -118,10 +118,10 @@ const Sidebar: React.FC = () => {
             {ordersOpen && (
               <div className="ml-6 mt-3 space-y-3 animate-fadeIn">
                 <Link
-                  to="/orders"
+                  to="/createorders"
                   className={`flex items-center gap-3 px-3 py-2 rounded-lg transition border 
                   ${
-                    isActive("/orders")
+                    isActive("/createorders")
                       ? "bg-amber-400/20 border-amber-300"
                       : "border-transparent hover:bg-[#1C2541]"
                   } text-slate-200`}
@@ -250,10 +250,10 @@ const Sidebar: React.FC = () => {
             {ordersOpen && (
               <div className="ml-6 mt-3 space-y-3 animate-fadeIn">
                 <Link
-                  to="/orders"
+                  to="/createorders"
                   className={`flex items-center gap-3 px-3 py-2 rounded-lg transition border 
                   ${
-                    isActive("/orders")
+                    isActive("/createorders")
                       ? "bg-amber-400/20 border-amber-300"
                       : "border-transparent hover:bg-[#1C2541]"
                   } text-slate-200`}

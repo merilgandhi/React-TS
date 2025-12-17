@@ -1,16 +1,16 @@
 import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
-import client from "../Services/clientServices";
+import client from "../../Services/clientServices";
 import toast from "react-hot-toast";
-import { SuccessToast, ErrorToast } from "../components/ToastStyles";
-import { variantCellTotals, productTotals, grandTotal,} from "../utils/orderCalculations";
+import { SuccessToast, ErrorToast } from "../../components/ToastStyles";
+import { variantCellTotals, productTotals, grandTotal,} from "../../utils/orderCalculations";
 
 type Seller = { id: number; name: string };
 type RawVariant = any;
 type Variant = {
   id: number;
   name: string;
-  price: number; // per strip
-  boxQuantity: number; // strips per box
+  price: number;
+  boxQuantity: number;
 };
 type Product = {
   id: number;
@@ -18,7 +18,7 @@ type Product = {
   gst: number;
   variants: Variant[];
 };
-export default function Orders() {
+export default function CreateOrders() {
   const [sellers, setSellers] = useState<Seller[]>([]);
   const [selectedSeller, setSelectedSeller] = useState<number | "">("");
   const [products, setProducts] = useState<Product[]>([]);
