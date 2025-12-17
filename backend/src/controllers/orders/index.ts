@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { ProductVariation, Product, Variation, Orders, OrderItem } from "@models/index";
+import { ProductVariation, Product, Variation, Orders, OrderItem, Seller } from "@models/index";
 import { Op } from "sequelize";
 import { sequelize } from "@config/database";
 
@@ -126,9 +126,6 @@ export const createProductFromScan = async (req: Request, res: Response) => {
 };
 
 
-
-
-
 export const createOrder = async (req: Request, res: Response) => {
   const t = await sequelize.transaction();
 
@@ -151,7 +148,7 @@ export const createOrder = async (req: Request, res: Response) => {
       });
     }
 
-    // 1️⃣ Create order first
+    // 1️ Create order first
     const order = await Orders.create(
       {
         sellerId,
@@ -166,7 +163,7 @@ export const createOrder = async (req: Request, res: Response) => {
     let subtotal = 0;
     let gstTotal = 0;
 
-    // 2️⃣ Loop items
+    // 2️ Loop items
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
 
@@ -179,14 +176,14 @@ export const createOrder = async (req: Request, res: Response) => {
         });
       }
 
-      // 3️⃣ Try finding ProductVariation by PK
+      // 3️ Try finding ProductVariation by PK
       let pv = await ProductVariation.findByPk(item.productVariationId, {
         include: [{ model: Product }, { model: Variation }],
         transaction: t,
         lock: t.LOCK.UPDATE,
       });
 
-      // 4️⃣ Fallback: variation.id + productId
+      // 4️ Fallback: variation.id + productId
       if (!pv) {
         const where: any = { variationId: item.productVariationId };
 
@@ -202,7 +199,7 @@ export const createOrder = async (req: Request, res: Response) => {
         });
       }
 
-      // ❌ Still not found
+      //  Still not found
       if (!pv) {
         await t.rollback();
         return res.status(404).json({
@@ -215,7 +212,7 @@ export const createOrder = async (req: Request, res: Response) => {
         });
       }
 
-      // 5️⃣ Stock check
+      // 5️ Stock check
       if (pv.stockInHand < qty) {
         await t.rollback();
         return res.status(400).json({
@@ -228,7 +225,7 @@ export const createOrder = async (req: Request, res: Response) => {
         });
       }
 
-      // 6️⃣ Deduct stock
+      // 6️ Deduct stock
       await pv.update(
         {
           stockInHand: pv.stockInHand - qty,
@@ -236,7 +233,7 @@ export const createOrder = async (req: Request, res: Response) => {
         { transaction: t }
       );
 
-      // 7️⃣ Price & GST calc
+      // 7️ Price & GST calc
       const unitPrice = Number(pv.price);
       const gstPercent = Number(pv.Product?.gst || 0);
 
@@ -247,7 +244,7 @@ export const createOrder = async (req: Request, res: Response) => {
       subtotal += lineBase;
       gstTotal += lineGst;
 
-      // 8️⃣ Create order item
+      // 8️ Create order item
       await OrderItem.create(
         {
           orderId: order.id,
@@ -265,7 +262,7 @@ export const createOrder = async (req: Request, res: Response) => {
 
     const grandTotal = +(subtotal + gstTotal).toFixed(2);
 
-    // 9️⃣ Update order totals
+    // 9️ Update order totals
     await order.update(
       {
         subtotal,
@@ -295,6 +292,139 @@ export const createOrder = async (req: Request, res: Response) => {
       success: false,
       message: "Failed to create order",
       details: process.env.NODE_ENV === "development" ? err.message : undefined,
+    });
+  }
+};
+
+export const listOrders = async (req: Request, res: Response) => {
+  try {
+    const { page, limit, offset } = req.pagination!;
+
+    const sellerId = req.query.sellerId;
+    const status = req.query.status;
+    const from = req.query.from;
+    const to = req.query.to;
+    const deleted = req.query.deleted === "true";
+
+    const where: any = {};
+
+    if (sellerId) where.sellerId = Number(sellerId);
+    if (status) where.status = status;
+
+    if (from && to) {
+      where.createdAt = { [Op.between]: [new Date(from), new Date(to)] };
+    } else if (from) {
+      where.createdAt = { [Op.gte]: new Date(from) };
+    } else if (to) {
+      where.createdAt = { [Op.lte]: new Date(to) };
+    }
+
+    const paranoid = deleted ? false : true;
+
+    const { rows, count } = await Orders.findAndCountAll({
+      where,
+      limit,
+      offset,
+      paranoid,
+      order: [["createdAt", "DESC"]],
+      include: [
+        {
+          model: Seller,
+          as: "seller",
+          attributes: ["id", "name", "contactNumber"],
+        },
+        {
+          model: OrderItem,
+          as: "items",
+          include: [
+            {
+              model: Product,
+              as: "product",
+              attributes: ["id", "name", "gst"],
+            },
+            {
+              model: ProductVariation,
+              as: "productVariation",
+              include: [
+                {
+                  model: Variation,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: rows,
+      total: count,
+      page,
+      totalPages: Math.ceil(count / limit),
+    });
+  } catch (error) {
+    console.error("LIST ORDERS ERROR:", error);
+    return res.status(500).json({
+      success: false,
+      statusCode: 500,
+      message: "Failed to fetch orders",
+    });
+  }
+};
+
+export const getOrderById = async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+
+    const order = await Orders.findByPk(id, {
+      include: [
+        {
+          model: Seller,
+          as: "seller",
+          attributes: ["id", "name", "contactNumber"],
+        },
+        {
+          model: OrderItem,
+          as: "items",
+          include: [
+            {
+              model: Product,
+              as: "product",
+              attributes: ["id", "name"],
+            },
+            {
+              model: ProductVariation,
+              as: "productVariation",
+              include: [
+                {
+                  model: Variation,
+                  as: "variation",
+                  attributes: ["id", "name"],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: order,
+    });
+  } catch (error) {
+    console.error("GET ORDER ERROR:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch order",
     });
   }
 };
