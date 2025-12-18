@@ -8,6 +8,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 import Seller from "./Pages/Seller";
 import CreateOrders from "./Pages/Orders/CreateOrders";
+import OrderList from "./Pages/Orders/OrdersList";
 
 function App() {
   return (
@@ -67,6 +68,16 @@ function App() {
               <ProtectedRoute>
                 <DashboardLayout>
                   <CreateOrders/>
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/orderslist"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout>
+                  <OrderList/>
                 </DashboardLayout>
               </ProtectedRoute>
             }

@@ -131,10 +131,10 @@ const Sidebar: React.FC = () => {
                 </Link>
 
                 <Link
-                  to="/products/variations"
+                  to="/orderslist"
                   className={`flex items-center gap-3 px-3 py-2 rounded-lg transition border 
                   ${
-                    isActive("/products/variations")
+                    isActive("/orderslist")
                       ? "bg-amber-400/20 border-amber-300"
                       : "border-transparent hover:bg-[#1C2541]"
                   } text-slate-200`}
@@ -263,10 +263,10 @@ const Sidebar: React.FC = () => {
                 </Link>
 
                 <Link
-                  to="/products/variations"
+                  to="/orderslist"
                   className={`flex items-center gap-3 px-3 py-2 rounded-lg transition border 
                   ${
-                    isActive("/products/variations")
+                    isActive("/orderslist")
                       ? "bg-amber-400/20 border-amber-300"
                       : "border-transparent hover:bg-[#1C2541]"
                   } text-slate-200`}
