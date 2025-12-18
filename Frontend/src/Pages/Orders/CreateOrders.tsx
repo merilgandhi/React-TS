@@ -1,9 +1,20 @@
-import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+  useRef,
+  useCallback,
+} from "react";
 import client from "../../Services/clientServices";
 import toast from "react-hot-toast";
 import { SuccessToast, ErrorToast } from "../../components/ToastStyles";
-import { variantCellTotals, productTotals, grandTotal,} from "../../utils/orderCalculations";
-
+import {variantCellTotals,productTotals,grandTotal,} from "../../utils/orderCalculations";
+type OrderMode = "create" | "view" | "update";
+type CreateOrdersProps = {
+  mode?: OrderMode;
+  orderId?: number;
+  onSuccess?: () => void;
+};
 type Seller = { id: number; name: string };
 type RawVariant = any;
 type Variant = {
@@ -18,25 +29,29 @@ type Product = {
   gst: number;
   variants: Variant[];
 };
-export default function CreateOrders() {
+
+export default function CreateOrders({
+  mode = "create",
+  orderId,
+  onSuccess,
+}: CreateOrdersProps) {
   const [sellers, setSellers] = useState<Seller[]>([]);
   const [selectedSeller, setSelectedSeller] = useState<number | "">("");
   const [products, setProducts] = useState<Product[]>([]);
-  const [sellerQuantities, setSellerQuantities] = useState<
-    Record<number, Record<string, number>>
-  >({});
+  const [sellerQuantities, setSellerQuantities] = useState<Record<number, Record<string, number>>>({});
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
-
+  const [allowedVariationIds, setAllowedVariationIds] = useState<number[]>([]);
   const quantities =
     selectedSeller && sellerQuantities[selectedSeller]
       ? sellerQuantities[selectedSeller]
       : {};
 
-  // helper to key quantities by product + variant
-  const getQty = (pId: number, vId: number) => Number(quantities[`${pId}__${vId}`] ?? 0);
+  const getQty = (pId: number, vId: number) =>
+    Number(quantities[`${pId}__${vId}`] ?? 0);
+
   const setQty = (pId: number, vId: number, val: number) => {
-    if (!selectedSeller) return;
+    if (!selectedSeller || mode === "view") return;
     setSellerQuantities((prev) => ({
       ...prev,
       [selectedSeller]: {
@@ -46,25 +61,26 @@ export default function CreateOrders() {
     }));
   };
 
-  // fetch sellers
+  /* ================= FETCH SELLERS ================= */
+
   const fetchSellers = async () => {
     try {
       const res = await client.get("/sellers?limit=999");
-      const list = res?.data?.data || res?.data?.sellers || res?.data || [];
-      setSellers(list);
-    } catch (err) {
+      setSellers(res?.data?.data || []);
+    } catch {
       toast.custom(() => <ErrorToast message="Failed to load sellers" />);
     }
   };
 
-  // fetch products & normalize variants
+  /* ================= FETCH PRODUCTS ================= */
+
   const fetchProducts = async () => {
     try {
       setLoading(true);
       const res = await client.get("/products?limit=999");
-      const list = res?.data?.products || res?.data?.data || res?.data || [];
+      const list = res?.data?.products || res?.data?.data || [];
 
-      const normalized: Product[] = (list || []).map((p: any) => ({
+      const normalized: Product[] = list.map((p: any) => ({
         id: p.id,
         name: p.name,
         gst: Number(p.gst ?? 0),
@@ -72,23 +88,68 @@ export default function CreateOrders() {
           id: v.variationId ?? v.id,
           name: v.Variation?.name ?? v.name ?? "Variant",
           price: Number(v.price ?? 0),
-          boxQuantity: Number(v.boxQuantity ?? v.box_quantity ?? 1),
+          boxQuantity: Number(v.boxQuantity ?? 1),
         })),
       }));
 
       setProducts(normalized);
-    } catch (err) {
+    } catch {
       toast.custom(() => <ErrorToast message="Failed to load products" />);
     } finally {
       setLoading(false);
     }
   };
 
+  const fetchOrder = async (id: number) => {
+  try {
+    const res = await client.get(`/orders/${id}`);
+    const order = res.data.data;
+    setSelectedSeller(order.seller.id);
+
+    const qtyMap: Record<string, number> = {};
+    const allowedIds: number[] = [];
+
+    order.items.forEach((item: any) => {
+      const product = products.find(p => p.id === item.product.id);
+      if (!product) return;
+      const variant = product.variants.find(
+        v => Number(v.price) === Number(item.unitPrice)
+      );
+      if (!variant) return;
+      qtyMap[`${product.id}__${variant.id}`] = item.quantity;
+      allowedIds.push(variant.id);
+    });
+    setSellerQuantities({
+      [order.seller.id]: qtyMap,
+    });
+    setAllowedVariationIds(allowedIds);
+  } catch {
+    toast.custom(() => (
+      <ErrorToast message="Failed to load order details" />
+    ));
+  }
+};
+
+
+  /* ================= EFFECTS ================= */
+
   useEffect(() => {
     fetchSellers();
     fetchProducts();
   }, []);
 
+useEffect(() => {
+  if (
+    (mode === "view" || mode === "update") &&
+    orderId &&
+    products.length > 0
+  ) {
+    fetchOrder(orderId);
+  }
+}, [mode, orderId, products]);
+
+
+  /* ================= GLOBAL VARIANTS ================= */
 
   const globalVariants = useMemo(() => {
     const map = new Map<number, { id: number; name: string }>();
@@ -99,6 +160,8 @@ export default function CreateOrders() {
     }
     return Array.from(map.values());
   }, [products]);
+
+  /* ================= COLUMN RESIZE (UNCHANGED) ================= */
 
   const [colWidths, setColWidths] = useState<Record<string, number>>({
     product: 220,
@@ -119,7 +182,11 @@ export default function CreateOrders() {
     });
   }, [globalVariants]);
 
-  const resizingRef = useRef<{ key: string; startX: number; startWidth: number } | null>(null);
+  const resizingRef = useRef<{
+    key: string;
+    startX: number;
+    startWidth: number;
+  } | null>(null);
 
   const onMouseMove = useCallback((e: MouseEvent) => {
     if (!resizingRef.current) return;
@@ -134,7 +201,6 @@ export default function CreateOrders() {
     document.removeEventListener("mouseup", onMouseUp);
   }, [onMouseMove]);
 
-  // cleanup listeners on unmount
   useEffect(() => {
     return () => {
       document.removeEventListener("mousemove", onMouseMove);
@@ -144,73 +210,85 @@ export default function CreateOrders() {
 
   const onMouseDownResize = (e: React.MouseEvent, key: string) => {
     e.preventDefault();
-    resizingRef.current = { key, startX: e.clientX, startWidth: colWidths[key] ?? 120 };
+    resizingRef.current = {
+      key,
+      startX: e.clientX,
+      startWidth: colWidths[key] ?? 120,
+    };
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
   };
 
-  const createOrder = async () => {
-    if (!selectedSeller) {
-      toast.custom(() => <ErrorToast message="Please select a seller" />);
-      return;
-    }
+const submitOrder = async () => {
+  if (!selectedSeller) {
+    toast.custom(() => <ErrorToast message="Please select a seller" />);
+    return;
+  }
 
-    const items: any[] = [];
-    for (const p of products) {
-      for (const gv of globalVariants) {
-        const c = variantCellTotals(p, gv.id, getQty);
-        if (!c.exists) continue;
-        if (!c.strips || c.strips <= 0) continue;
+  const items: any[] = [];
+
+  for (const p of products) {
+    for (const gv of globalVariants) {
+      const c = variantCellTotals(p, gv.id, getQty);
+      if (!c.exists || !c.strips || c.strips <= 0) continue;
+
+      // 🔒 UPDATE MODE → ONLY EXISTING VARIATIONS
+      if (mode === "update") {
+        if (!allowedVariationIds.includes(gv.id)) continue;
+
+        items.push({
+          productVariationId: gv.id,
+          quantity: c.strips,
+        });
+      }
+      // 🟢 CREATE MODE → FULL PAYLOAD
+      else {
         items.push({
           productId: p.id,
           productVariationId: gv.id,
           quantity: c.strips,
-          subtotal: c.subtotal,
           total: c.total,
-          gstTotal: c.total - c.subtotal,
-          grandTotal: c.total,
         });
       }
     }
+  }
 
-    if (items.length === 0) {
-      toast.custom(() => <ErrorToast message="Enter at least one quantity" />);
-      return;
-    }
+  if (items.length === 0) {
+    toast.custom(() => <ErrorToast message="Enter at least one quantity" />);
+    return;
+  }
 
-    try {
-      setCreating(true);
-      const res = await client.post("/orders/sell", {
+  try {
+    setCreating(true);
+    if (mode === "update") {
+      await client.put(`/orders/${orderId}`, { items });
+    } else {
+      await client.post("/orders/sell", {
         sellerId: selectedSeller,
         items,
         grandTotal: grandTotal(products, globalVariants, getQty),
       });
-      toast.custom(() => (
-        <SuccessToast message={res?.data?.message || "Order created"} />
-      ));
-      setSellerQuantities((prev) => {
-        const copy = { ...prev };
-        delete copy[selectedSeller as number];
-        return copy;
-      });
-    } catch (err: any) {
-      toast.custom(() => (
-        <ErrorToast
-          message={err?.response?.data?.message || "Failed to create order"}
-        />
-      ));
-    } finally {
-      setCreating(false);
     }
-  };
 
-  // sticky left inline styles
+    toast.custom(() => (
+      <SuccessToast message="Order saved successfully" />
+    ));
+
+    onSuccess?.();
+  } catch {
+    toast.custom(() => <ErrorToast message="Failed to process order" />);
+  } finally {
+    setCreating(false);
+  }
+};
+
   const stickyLeftStyle: React.CSSProperties = {
     position: "sticky",
     left: 0,
     zIndex: 20,
     background: "white",
   };
+
   const headerStyle: React.CSSProperties = {
     position: "sticky",
     top: 0,
@@ -220,10 +298,30 @@ export default function CreateOrders() {
     border: "1px solid rgba(0,0,0,0.08)",
   };
 
-  const headerLeftStyle: React.CSSProperties = { ...headerStyle, left: 0, zIndex: 30 };
+  const headerLeftStyle: React.CSSProperties = {
+    ...headerStyle,
+    left: 0,
+    zIndex: 30,
+  };
 
-  const resizerStyle: React.CSSProperties = { position: "absolute", right: 0, top: 0, bottom: 0, width: 8, cursor: "col-resize" };
-  const resizerInnerStyle: React.CSSProperties = { position: "absolute", right: 3, top: "50%", transform: "translateY(-50%)", width: 2, height: "56%", background: "rgba(255,255,255,0.5)" };
+  const resizerStyle: React.CSSProperties = {
+    position: "absolute",
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 8,
+    cursor: "col-resize",
+  };
+
+  const resizerInnerStyle: React.CSSProperties = {
+    position: "absolute",
+    right: 3,
+    top: "50%",
+    transform: "translateY(-50%)",
+    width: 2,
+    height: "56%",
+    background: "rgba(255,255,255,0.5)",
+  };
 
   const renderResizer = (key: string) => (
     <div onMouseDown={(e) => onMouseDownResize(e, key)} style={resizerStyle}>
@@ -233,25 +331,41 @@ export default function CreateOrders() {
 
   const colSpan = globalVariants.length + 4;
 
+  /* ================= RENDER (UNCHANGED TABLE) ================= */
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900">Create Order</h1>
-        <div className="flex items-center gap-3">
+        <h1 className="text-2xl font-bold text-slate-900">
+          {mode === "update"
+            ? "Update Order"
+            : mode === "view"
+            ? "View Order"
+            : "Create Order"}
+        </h1>
+
+        {mode !== "view" && (
           <button
-            onClick={createOrder}
+            onClick={submitOrder}
             disabled={creating}
             className="px-4 py-2 bg-slate-900 text-white rounded font-semibold"
           >
-            {creating ? "Creating..." : "Create Order"}
+            {creating
+              ? mode === "update"
+                ? "Updating..."
+                : "Creating..."
+              : mode === "update"
+              ? "Update Order"
+              : "Create Order"}
           </button>
-        </div>
+        )}
       </div>
 
       {/* Seller select */}
       <div className="bg-white p-4 rounded shadow border flex items-center gap-4">
         <label className="font-medium text-slate-700">Select Seller</label>
         <select
+          disabled={mode !== "create"}
           className="px-3 py-2 border rounded"
           value={selectedSeller}
           onChange={(e) =>
@@ -266,8 +380,6 @@ export default function CreateOrders() {
           ))}
         </select>
       </div>
-
-      {/* prompt when no seller */}
       {!selectedSeller ? (
         <div className="bg-white p-6 rounded shadow text-center text-slate-500 border">
           Please select a seller to view products & variants.
@@ -276,7 +388,10 @@ export default function CreateOrders() {
         <div className="bg-white border rounded shadow overflow-hidden">
           {/* horizontal scroll wrapper — table inside */}
           <div className="overflow-auto" style={{ maxHeight: "620px" }}>
-            <table className="min-w-full border-collapse" style={{ tableLayout: "fixed" }}>
+            <table
+              className="min-w-full border-collapse"
+              style={{ tableLayout: "fixed" }}
+            >
               <thead>
                 <tr>
                   {/* sticky product header */}
@@ -299,16 +414,41 @@ export default function CreateOrders() {
                   {globalVariants.map((gv) => {
                     const key = `v-${gv.id}`;
                     return (
-                      <th key={gv.id} style={{ ...headerStyle, padding: "10px 8px", width: colWidths[key] }} className="relative">
-                        <div className="text-amber-300 font-medium whitespace-nowrap text-sm">{gv.name}</div>
-                            {renderResizer(key)}
+                      <th
+                        key={gv.id}
+                        style={{
+                          ...headerStyle,
+                          padding: "10px 8px",
+                          width: colWidths[key],
+                        }}
+                        className="relative"
+                      >
+                        <div className="text-amber-300 font-medium whitespace-nowrap text-sm">
+                          {gv.name}
+                        </div>
+                        {renderResizer(key)}
                       </th>
                     );
                   })}
 
-                  <th style={{ ...headerStyle, width: colWidths.subtotal }} className="text-right relative">Subtotal{renderResizer("subtotal")}</th>
-                  <th style={{ ...headerStyle, width: colWidths.gst }} className="text-right relative">GST{renderResizer("gst")}</th>
-                  <th style={{ ...headerStyle, width: colWidths.total }} className="text-right">Total</th>
+                  <th
+                    style={{ ...headerStyle, width: colWidths.subtotal }}
+                    className="text-right relative"
+                  >
+                    Subtotal{renderResizer("subtotal")}
+                  </th>
+                  <th
+                    style={{ ...headerStyle, width: colWidths.gst }}
+                    className="text-right relative"
+                  >
+                    GST{renderResizer("gst")}
+                  </th>
+                  <th
+                    style={{ ...headerStyle, width: colWidths.total }}
+                    className="text-right"
+                  >
+                    Total
+                  </th>
                 </tr>
               </thead>
 
@@ -327,13 +467,20 @@ export default function CreateOrders() {
                   </tr>
                 ) : (
                   products.map((product) => {
-                    const pTotals = productTotals(product, globalVariants, getQty);
+                    const pTotals = productTotals(
+                      product,
+                      globalVariants,
+                      getQty
+                    );
 
                     return (
                       <tr key={product.id} className="align-top">
                         {/* sticky left product cell */}
                         <td
-                          style={{ ...(stickyLeftStyle as React.CSSProperties), width: colWidths.product }}
+                          style={{
+                            ...(stickyLeftStyle as React.CSSProperties),
+                            width: colWidths.product,
+                          }}
                           className="p-3 border bg-slate-50 font-medium"
                         >
                           {product.name}
@@ -418,9 +565,15 @@ export default function CreateOrders() {
                         })}
 
                         {/* Subtotal, GST, Total */}
-                        <td className="p-3 border text-right">₹ {pTotals.subtotal.toFixed(2)}</td>
-                        <td className="p-3 border text-right">₹ {pTotals.gstAmount.toFixed(2)}</td>
-                        <td className="p-3 border text-right font-semibold">₹ {pTotals.total.toFixed(2)}</td>
+                        <td className="p-3 border text-right">
+                          ₹ {pTotals.subtotal.toFixed(2)}
+                        </td>
+                        <td className="p-3 border text-right">
+                          ₹ {pTotals.gstAmount.toFixed(2)}
+                        </td>
+                        <td className="p-3 border text-right font-semibold">
+                          ₹ {pTotals.total.toFixed(2)}
+                        </td>
                       </tr>
                     );
                   })
