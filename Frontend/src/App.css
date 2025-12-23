@@ -1,1 +1,5 @@
 @import "tailwindcss";
+
+.cell-input-width{
+    width: 20px;
+}

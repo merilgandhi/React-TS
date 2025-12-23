@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import client from "../Services/clientServices";
+import client from "../services/clientServices";
 import { FiEdit, FiTrash2, FiX } from "react-icons/fi";
 import toast from "react-hot-toast";
 import Pagination from "../components/Pagination";
@@ -214,7 +214,7 @@ const Sellers = () => {
                         className="text-blue-600 hover:text-blue-800"
                         onClick={() => handleEdit(seller)}
                       >
-                        <FiEdit size={18} />
+                        <FiEdit size={18} className="text-amber-400"/>
                       </button>
 
                       <button

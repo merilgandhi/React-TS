@@ -1,167 +1,111 @@
-import React, {
-  useEffect,
-  useMemo,
-  useState,
-  useRef,
-  useCallback,
-} from "react";
-import client from "../../Services/clientServices";
+import React, { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { SuccessToast, ErrorToast } from "../../components/ToastStyles";
-import {variantCellTotals,productTotals,grandTotal,} from "../../utils/orderCalculations";
-type OrderMode = "create" | "view" | "update";
-type CreateOrdersProps = {
-  mode?: OrderMode;
-  orderId?: number;
-  onSuccess?: () => void;
-};
-type Seller = { id: number; name: string };
-type RawVariant = any;
-type Variant = {
-  id: number;
-  name: string;
-  price: number;
-  boxQuantity: number;
-};
-type Product = {
-  id: number;
-  name: string;
-  gst: number;
-  variants: Variant[];
-};
+import OrderVariantCell from "../../components/OrderVariantCell";
+import { useOrders } from "../../hooks/useOrders";
+import { OrderService } from "../../Services/order.service";
+import { grandTotal } from "../../utils/orderCalculations";
+import type { OrderMode, Product } from "../../types/order.types";
+import { useParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 export default function CreateOrders({
-  mode = "create",
-  orderId,
   onSuccess,
-}: CreateOrdersProps) {
-  const [sellers, setSellers] = useState<Seller[]>([]);
+}: {
+  onSuccess?: () => void;
+}) {
+  const { sellers, products, loading } = useOrders();
+
   const [selectedSeller, setSelectedSeller] = useState<number | "">("");
-  const [products, setProducts] = useState<Product[]>([]);
-  const [sellerQuantities, setSellerQuantities] = useState<Record<number, Record<string, number>>>({});
-  const [loading, setLoading] = useState(false);
+  const [orderQuantities, setOrderQuantities] = useState<any>({});
   const [creating, setCreating] = useState(false);
-  const [allowedVariationIds, setAllowedVariationIds] = useState<number[]>([]);
-  const quantities =
-    selectedSeller && sellerQuantities[selectedSeller]
-      ? sellerQuantities[selectedSeller]
-      : {};
+  const navigate = useNavigate();
+  const getQty = (productId: number, variationId: number) => {
+    return orderQuantities[productId]?.[variationId]?.quantity || 0;
+  };
+  const { orderId } = useParams<{ orderId: string }>();
+  const orderid = orderId ? Number(orderId) : undefined;
 
-  const getQty = (pId: number, vId: number) =>
-    Number(quantities[`${pId}__${vId}`] ?? 0);
+  const pathname = window.location.pathname;
 
-  const setQty = (pId: number, vId: number, val: number) => {
-    if (!selectedSeller || mode === "view") return;
-    setSellerQuantities((prev) => ({
+  const mode: OrderMode = pathname.includes("/edit")
+    ? "update"
+    : pathname.includes("/view")
+    ? "view"
+    : "create";
+
+  const updateQuantity = (
+    productId: number,
+    variantId: number,
+    value: number
+  ) => {
+    setOrderQuantities((prev: any) => ({
       ...prev,
-      [selectedSeller]: {
-        ...(prev[selectedSeller] || {}),
-        [`${pId}__${vId}`]: val,
+      [productId]: {
+        ...(prev[productId] || {}),
+        [variantId]: {
+          ...(prev[productId]?.[variantId] || {}),
+          quantity: value,
+        },
       },
     }));
   };
 
-  /* ================= FETCH SELLERS ================= */
-
-  const fetchSellers = async () => {
-    try {
-      const res = await client.get("/sellers?limit=999");
-      setSellers(res?.data?.data || []);
-    } catch {
-      toast.custom(() => <ErrorToast message="Failed to load sellers" />);
-    }
-  };
-
-  /* ================= FETCH PRODUCTS ================= */
-
-  const fetchProducts = async () => {
-    try {
-      setLoading(true);
-      const res = await client.get("/products?limit=999");
-      const list = res?.data?.products || res?.data?.data || [];
-
-      const normalized: Product[] = list.map((p: any) => ({
-        id: p.id,
-        name: p.name,
-        gst: Number(p.gst ?? 0),
-        variants: (p.variants || []).map((v: RawVariant) => ({
-          id: v.variationId ?? v.id,
-          name: v.Variation?.name ?? v.name ?? "Variant",
-          price: Number(v.price ?? 0),
-          boxQuantity: Number(v.boxQuantity ?? 1),
-        })),
-      }));
-
-      setProducts(normalized);
-    } catch {
-      toast.custom(() => <ErrorToast message="Failed to load products" />);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchOrder = async (id: number) => {
-  try {
-    const res = await client.get(`/orders/${id}`);
-    const order = res.data.data;
-    setSelectedSeller(order.seller.id);
-
-    const qtyMap: Record<string, number> = {};
-    const allowedIds: number[] = [];
-
-    order.items.forEach((item: any) => {
-      const product = products.find(p => p.id === item.product.id);
-      if (!product) return;
-      const variant = product.variants.find(
-        v => Number(v.price) === Number(item.unitPrice)
-      );
-      if (!variant) return;
-      qtyMap[`${product.id}__${variant.id}`] = item.quantity;
-      allowedIds.push(variant.id);
-    });
-    setSellerQuantities({
-      [order.seller.id]: qtyMap,
-    });
-    setAllowedVariationIds(allowedIds);
-  } catch {
-    toast.custom(() => (
-      <ErrorToast message="Failed to load order details" />
-    ));
-  }
-};
-
-
-  /* ================= EFFECTS ================= */
-
   useEffect(() => {
-    fetchSellers();
-    fetchProducts();
-  }, []);
+    if (mode === "view" || mode === "update") {
+      if (!orderid) return;
+      fetchOrderById(orderid);
+    }
+  }, [orderid, mode, products]);
 
-useEffect(() => {
-  if (
-    (mode === "view" || mode === "update") &&
-    orderId &&
-    products.length > 0
-  ) {
-    fetchOrder(orderId);
-  }
-}, [mode, orderId, products]);
+  const fetchOrderById = async (id: number) => {
+    try {
+      const orderData = await OrderService.getOrderById(id);
+      setSelectedSeller(orderData.seller.id);
 
+      const quantities: any = {};
 
-  /* ================= GLOBAL VARIANTS ================= */
+      orderData.items.forEach((item: any) => {
+        const productId = item.product.id;
 
+        const product = products.find((p) => p.id === productId);
+        if (!product) return;
+
+        const matchedVariant = product.variants.find(
+          (v) => v.name === item.productVariation.variation.name
+        );
+
+        if (!matchedVariant) return;
+
+        if (!quantities[productId]) {
+          quantities[productId] = {};
+        }
+
+        quantities[productId][matchedVariant.id] = {
+          quantity: item.quantity,
+          orderProductVariationId: item.id,
+        };
+      });
+
+      setOrderQuantities(quantities);
+    } catch (error) {
+      console.error("Error fetching order:", error);
+      toast.custom(() => <ErrorToast message="Failed to load order data" />);
+    }
+  };
   const globalVariants = useMemo(() => {
     const map = new Map<number, { id: number; name: string }>();
-    for (const p of products) {
-      for (const v of p.variants) {
-        if (!map.has(v.id)) map.set(v.id, { id: v.id, name: v.name });
-      }
-    }
+
+    products.forEach((p: Product) =>
+      p.variants.forEach((v) => {
+        if (!map.has(v.id)) {
+          map.set(v.id, { id: v.id, name: v.name });
+        }
+      })
+    );
+
     return Array.from(map.values());
   }, [products]);
-
-  /* ================= COLUMN RESIZE (UNCHANGED) ================= */
 
   const [colWidths, setColWidths] = useState<Record<string, number>>({
     product: 220,
@@ -172,169 +116,124 @@ useEffect(() => {
 
   useEffect(() => {
     if (!globalVariants.length) return;
+
     setColWidths((prev) => {
       const next = { ...prev };
-      for (const gv of globalVariants) {
-        const k = `v-${gv.id}`;
-        if (!next[k]) next[k] = 160;
-      }
+      globalVariants.forEach((gv) => {
+        const key = `v-${gv.id}`;
+        if (!next[key]) next[key] = 160;
+      });
       return next;
     });
   }, [globalVariants]);
 
-  const resizingRef = useRef<{
-    key: string;
-    startX: number;
-    startWidth: number;
-  } | null>(null);
+  const items = useMemo(() => {
+    const result: any[] = [];
 
-  const onMouseMove = useCallback((e: MouseEvent) => {
-    if (!resizingRef.current) return;
-    const { key, startX, startWidth } = resizingRef.current;
-    const newW = Math.max(40, startWidth + (e.clientX - startX));
-    setColWidths((prev) => ({ ...prev, [key]: newW }));
-  }, []);
+    Object.entries(orderQuantities).forEach(
+      ([productId, variants]: [string, any]) => {
+        Object.entries(variants).forEach(([variantId, data]: [string, any]) => {
+          const qty = Number(data?.quantity || 0);
 
-  const onMouseUp = useCallback(() => {
-    resizingRef.current = null;
-    document.removeEventListener("mousemove", onMouseMove);
-    document.removeEventListener("mouseup", onMouseUp);
-  }, [onMouseMove]);
+          if (qty > 0) {
+            result.push({
+              productId: Number(productId),
+              productVariationId: Number(variantId),
+              quantity: qty,
+              orderProductVariationId: data.orderProductVariationId,
+            });
+          }
+        });
+      }
+    );
 
-  useEffect(() => {
-    return () => {
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
-    };
-  }, [onMouseMove, onMouseUp]);
+    return result;
+  }, [orderQuantities]);
 
-  const onMouseDownResize = (e: React.MouseEvent, key: string) => {
-    e.preventDefault();
-    resizingRef.current = {
-      key,
-      startX: e.clientX,
-      startWidth: colWidths[key] ?? 120,
-    };
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
-  };
+  const submitOrder = async () => {
+    if (!selectedSeller) {
+      toast.custom(() => <ErrorToast message="Please select a seller" />);
+      return;
+    }
 
-const submitOrder = async () => {
-  if (!selectedSeller) {
-    toast.custom(() => <ErrorToast message="Please select a seller" />);
-    return;
-  }
+    if (!items.length) {
+      toast.custom(() => <ErrorToast message="Enter at least one quantity" />);
+      return;
+    }
 
-  const items: any[] = [];
+    try {
+      setCreating(true);
 
-  for (const p of products) {
-    for (const gv of globalVariants) {
-      const c = variantCellTotals(p, gv.id, getQty);
-      if (!c.exists || !c.strips || c.strips <= 0) continue;
-
-      // 🔒 UPDATE MODE → ONLY EXISTING VARIATIONS
       if (mode === "update") {
-        if (!allowedVariationIds.includes(gv.id)) continue;
-
-        items.push({
-          productVariationId: gv.id,
-          quantity: c.strips,
+        await OrderService.updateOrder(orderid!, { items });
+      } else {
+        await OrderService.createOrder({
+          sellerId: selectedSeller,
+          items,
+          grandTotal: grandTotal(products, globalVariants, getQty),
         });
       }
-      // 🟢 CREATE MODE → FULL PAYLOAD
-      else {
-        items.push({
-          productId: p.id,
-          productVariationId: gv.id,
-          quantity: c.strips,
-          total: c.total,
-        });
-      }
+
+      toast.custom(() => <SuccessToast message="Order saved successfully" />);
+      onSuccess?.();
+    } catch {
+      toast.custom(() => <ErrorToast message="Failed to process order" />);
+    } finally {
+      setCreating(false);
     }
-  }
-
-  if (items.length === 0) {
-    toast.custom(() => <ErrorToast message="Enter at least one quantity" />);
-    return;
-  }
-
-  try {
-    setCreating(true);
-    if (mode === "update") {
-      await client.put(`/orders/${orderId}`, { items });
-    } else {
-      await client.post("/orders/sell", {
-        sellerId: selectedSeller,
-        items,
-        grandTotal: grandTotal(products, globalVariants, getQty),
-      });
-    }
-
-    toast.custom(() => (
-      <SuccessToast message="Order saved successfully" />
-    ));
-
-    onSuccess?.();
-  } catch {
-    toast.custom(() => <ErrorToast message="Failed to process order" />);
-  } finally {
-    setCreating(false);
-  }
-};
-
-  const stickyLeftStyle: React.CSSProperties = {
-    position: "sticky",
-    left: 0,
-    zIndex: 20,
-    background: "white",
   };
-
-  const headerStyle: React.CSSProperties = {
-    position: "sticky",
-    top: 0,
-    background: "#0f1724",
-    color: "white",
-    padding: "12px",
-    border: "1px solid rgba(0,0,0,0.08)",
-  };
-
-  const headerLeftStyle: React.CSSProperties = {
-    ...headerStyle,
-    left: 0,
-    zIndex: 30,
-  };
-
-  const resizerStyle: React.CSSProperties = {
-    position: "absolute",
-    right: 0,
-    top: 0,
-    bottom: 0,
-    width: 8,
-    cursor: "col-resize",
-  };
-
-  const resizerInnerStyle: React.CSSProperties = {
-    position: "absolute",
-    right: 3,
-    top: "50%",
-    transform: "translateY(-50%)",
-    width: 2,
-    height: "56%",
-    background: "rgba(255,255,255,0.5)",
-  };
-
-  const renderResizer = (key: string) => (
-    <div onMouseDown={(e) => onMouseDownResize(e, key)} style={resizerStyle}>
-      <div style={resizerInnerStyle} />
-    </div>
-  );
 
   const colSpan = globalVariants.length + 4;
 
-  /* ================= RENDER (UNCHANGED TABLE) ================= */
+  const doTotal = useMemo(() => {
+    const total: any = {};
+    const orderItem = Object.keys(orderQuantities) as unknown as number[];
+    orderItem.forEach((item: number) => {
+      const product = products.find((pro) => pro.id == item);
+      if (!product) {
+        return;
+      }
+      let productTotal = 0;
+      product.variants.forEach((variant) => {
+        productTotal +=
+          (Number(orderQuantities[item]?.[variant.id]?.quantity) || 0) *
+          Number(variant.price);
+      });
+
+      const gst = (productTotal * product.gst) / 100;
+      total[item] = {
+        productTotal,
+        gst,
+        finalTotal: productTotal + gst,
+      };
+    });
+    return total;
+  }, [orderQuantities, products]);
+  const footerTotals = useMemo(() => {
+    let subtotal = 0;
+    let gst = 0;
+    let total = 0;
+
+    Object.values(doTotal).forEach((row: any) => {
+      subtotal += row.productTotal || 0;
+      gst += row.gst || 0;
+      total += row.finalTotal || 0;
+    });
+
+    return { subtotal, gst, total };
+  }, [doTotal]);
 
   return (
     <div className="p-6 space-y-6">
+      {/* Header */}
+      {mode !== "create" && (
+        <button
+          onClick={() => navigate("/orderslist")}
+          className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-slate-700 hover:text-slate-900"
+        >
+          ← Back to Orders List
+        </button>
+      )}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-slate-900">
           {mode === "update"
@@ -361,7 +260,7 @@ const submitOrder = async () => {
         )}
       </div>
 
-      {/* Seller select */}
+      {/* Seller Selection */}
       <div className="bg-white p-4 rounded shadow border flex items-center gap-4">
         <label className="font-medium text-slate-700">Select Seller</label>
         <select
@@ -380,235 +279,193 @@ const submitOrder = async () => {
           ))}
         </select>
       </div>
-      {!selectedSeller ? (
+      {!selectedSeller && mode === "create" ? (
         <div className="bg-white p-6 rounded shadow text-center text-slate-500 border">
           Please select a seller to view products & variants.
         </div>
       ) : (
-        <div className="bg-white border rounded shadow overflow-hidden">
-          {/* horizontal scroll wrapper — table inside */}
-          <div className="overflow-auto" style={{ maxHeight: "620px" }}>
-            <table
-              className="min-w-full border-collapse"
-              style={{ tableLayout: "fixed" }}
-            >
-              <thead>
+        <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-auto">
+          <table
+            className="min-w-full border-collapse text-sm"
+            style={{ tableLayout: "fixed" }}
+          >
+            <thead>
+              <tr>
+                {/* Product Header */}
+                <th
+                  style={{
+                    ...headerLeftStyle,
+                    width: colWidths.product,
+                  }}
+                  className="text-left px-4 py-3 border-r text-slate-200 uppercase tracking-wide text-xs"
+                >
+                  Product
+                </th>
+
+                {/* Variant Headers */}
+                {globalVariants.map((gv) => (
+                  <th
+                    key={gv.id}
+                    colSpan={3}
+                    style={{ ...headerStyle, width: 180 }}
+                    className="px-2 py-3 border-r"
+                  >
+                    <div className="text-amber-300 font-semibold text-xs uppercase tracking-wide whitespace-nowrap text-center">
+                      {gv.name}
+                    </div>
+                  </th>
+                ))}
+
+                <th
+                  style={{ ...headerStyle, width: colWidths.subtotal }}
+                  className="text-right px-4 py-3 border-r uppercase tracking-wide text-xs"
+                >
+                  Subtotal
+                </th>
+                <th
+                  style={{ ...headerStyle, width: colWidths.gst }}
+                  className="text-right px-4 py-3 border-r uppercase tracking-wide text-xs"
+                >
+                  GST
+                </th>
+                <th
+                  style={{ ...headerStyle, width: colWidths.total }}
+                  className="text-right px-4 py-3 uppercase tracking-wide text-xs"
+                >
+                  Total
+                </th>
+              </tr>
+            </thead>
+
+            {/* ===================== BODY ===================== */}
+            <tbody>
+              {loading ? (
                 <tr>
-                  {/* sticky product header */}
-                  <th
-                    style={{
-                      ...headerLeftStyle,
-                      padding: "12px",
-                      border: "1px solid rgba(0,0,0,0.08)",
-                      width: colWidths.product,
-                      position: "sticky",
-                      left: 0,
-                    }}
-                    className="text-left relative"
+                  <td
+                    colSpan={colSpan}
+                    className="p-8 text-center text-slate-500"
                   >
-                    Products
-                    {renderResizer("product")}
-                  </th>
-
-                  {/* global variant headers */}
-                  {globalVariants.map((gv) => {
-                    const key = `v-${gv.id}`;
-                    return (
-                      <th
-                        key={gv.id}
-                        style={{
-                          ...headerStyle,
-                          padding: "10px 8px",
-                          width: colWidths[key],
-                        }}
-                        className="relative"
-                      >
-                        <div className="text-amber-300 font-medium whitespace-nowrap text-sm">
-                          {gv.name}
-                        </div>
-                        {renderResizer(key)}
-                      </th>
-                    );
-                  })}
-
-                  <th
-                    style={{ ...headerStyle, width: colWidths.subtotal }}
-                    className="text-right relative"
-                  >
-                    Subtotal{renderResizer("subtotal")}
-                  </th>
-                  <th
-                    style={{ ...headerStyle, width: colWidths.gst }}
-                    className="text-right relative"
-                  >
-                    GST{renderResizer("gst")}
-                  </th>
-                  <th
-                    style={{ ...headerStyle, width: colWidths.total }}
-                    className="text-right"
-                  >
-                    Total
-                  </th>
+                    Loading products…
+                  </td>
                 </tr>
-              </thead>
-
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={colSpan} className="p-6 text-center">
-                      Loading products...
-                    </td>
-                  </tr>
-                ) : products.length === 0 ? (
-                  <tr>
-                    <td colSpan={colSpan} className="p-6 text-center">
-                      No products available
-                    </td>
-                  </tr>
-                ) : (
-                  products.map((product) => {
-                    const pTotals = productTotals(
-                      product,
-                      globalVariants,
-                      getQty
-                    );
-
-                    return (
-                      <tr key={product.id} className="align-top">
-                        {/* sticky left product cell */}
-                        <td
-                          style={{
-                            ...(stickyLeftStyle as React.CSSProperties),
-                            width: colWidths.product,
-                          }}
-                          className="p-3 border bg-slate-50 font-medium"
-                        >
-                          {product.name}
-                        </td>
-
-                        {/* variant cells in same order as headers */}
-                        {globalVariants.map((gv) => {
-                          const c = variantCellTotals(product, gv.id, getQty);
-                          if (!c.exists) {
-                            return (
-                              <td
-                                key={gv.id}
-                                className="p-3 border text-center text-slate-400"
-                              >
-                                —
-                              </td>
-                            );
-                          }
-
-                          // NEW 3-box compact layout
-                          return (
-                            <td key={gv.id} className="p-3 border align-top">
-                              <div className="bg-[#f8fafc] rounded p-2 text-xs text-slate-700 border border-slate-300 ">
-                                {/* header row: variant name + price */}
-                                <div className="flex justify-between items-center mb-2">
-                                  <div className="text-slate-900 font-semibold text-sm">
-                                    {c.variantName}
-                                  </div>
-                                  <div className="text-[11px] text-slate-600">
-                                    ₹{c.price} GST({product.gst}%)
-                                  </div>
-                                </div>
-
-                                {/* three boxes */}
-                                <div className="flex gap-2 w-full">
-                                  {/* Strip Quantity */}
-                                  <div className="flex flex-col items-center w-1/3">
-                                    <div className="text-[10px] text-slate-600 mb-1">
-                                      Qty[Strips]
-                                    </div>
-                                    <input
-                                      type="number"
-                                      min={0}
-                                      value={c.strips}
-                                      onChange={(e) =>
-                                        setQty(
-                                          product.id,
-                                          gv.id,
-                                          Math.max(
-                                            0,
-                                            Number(e.target.value) || 0
-                                          )
-                                        )
-                                      }
-                                      className="w-full px-1 py-6px border border-slate-300 bg-white rounded text-right text-xs text-slate-800"
-                                    />
-                                  </div>
-
-                                  {/* Boxes */}
-                                  <div className="flex flex-col items-center w-1/3">
-                                    <div className="text-[10px] text-slate-600 mb-1">
-                                      Boxes
-                                    </div>
-                                    <div className="w-full text-center bg-white border border-slate-300 rounded py-6px text-xs text-slate-800">
-                                      {c.boxes}
-                                    </div>
-                                  </div>
-
-                                  {/* Remaining Strips */}
-                                  <div className="flex flex-col items-center w-1/3">
-                                    <div className="text-[10px] text-slate-600 mb-1">
-                                      Strips
-                                    </div>
-                                    <div className="w-full text-center bg-white border border-slate-300 rounded py-6px text-xs text-slate-800">
-                                      {c.remaining}
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            </td>
-                          );
-                        })}
-
-                        {/* Subtotal, GST, Total */}
-                        <td className="p-3 border text-right">
-                          ₹ {pTotals.subtotal.toFixed(2)}
-                        </td>
-                        <td className="p-3 border text-right">
-                          ₹ {pTotals.gstAmount.toFixed(2)}
-                        </td>
-                        <td className="p-3 border text-right font-semibold">
-                          ₹ {pTotals.total.toFixed(2)}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-
-              <tfoot>
+              ) : products.length === 0 ? (
                 <tr>
-                  {/* left footer placeholder (sticky left) */}
-                  <td style={headerLeftStyle}></td>
-
-                  {/* footer cells for each variant (empty for now) */}
-                  {globalVariants.map((gv) => (
+                  <td
+                    colSpan={colSpan}
+                    className="p-8 text-center text-slate-500"
+                  >
+                    No products available
+                  </td>
+                </tr>
+              ) : (
+                products.map((product) => (
+                  <tr
+                    key={product.id}
+                    className="align-top hover:bg-slate-50 transition-colors"
+                  >
+                    {/* Product Name */}
                     <td
-                      key={gv.id}
-                      style={{ width: colWidths[`v-${gv.id}`] }}
-                      className="p-3 border bg-slate-800 text-white text-center text-xs"
-                    ></td>
-                  ))}
+                      style={{
+                        ...(stickyLeftStyle as React.CSSProperties),
+                        width: colWidths.product,
+                      }}
+                      className="px-4 py-3 border-r bg-slate-50 font-medium text-slate-700"
+                    >
+                      {product.name}
+                    </td>
 
-                  <td className="p-3 border bg-slate-800 text-white text-right font-semibold">
-                    Grand Subtotal
-                  </td>
-                  <td className="p-3 border bg-slate-800 text-white text-right">
-                    —
-                  </td>
-                  <td className="p-3 border bg-slate-800 text-white text-right font-bold">
-                    ₹ {grandTotal(products, globalVariants, getQty).toFixed(2)}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+                    {/* Variant Cells */}
+                    {globalVariants.map((gv) => {
+                      const item = product.variants.find((v) => v.id === gv.id);
+
+                      return item ? (
+                        <OrderVariantCell
+                          key={`${product.id}-${item.id}`}
+                          variation={item}
+                          quantity={getQty(product.id, item.id)}
+                          disabled={mode === "view"}
+                          onChange={(val) =>
+                            updateQuantity(product.id, item.id, val)
+                          }
+                        />
+                      ) : (
+                        <td
+                          key={`${product.id}-${gv.id}`}
+                          colSpan={3}
+                          className="text-center text-slate-400 border-r"
+                        >
+                          —
+                        </td>
+                      );
+                    })}
+
+                    {/* Row Totals */}
+                    <td className="px-4 py-3 text-right border-r tabular-nums text-slate-700">
+                      {doTotal[product.id]?.productTotal?.toFixed(2) || "0.00"}
+                    </td>
+                    <td className="px-4 py-3 text-right border-r tabular-nums text-slate-700">
+                      {doTotal[product.id]?.gst?.toFixed(2) || "0.00"}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-800">
+                      {doTotal[product.id]?.finalTotal?.toFixed(2) || "0.00"}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+
+            {/* ===================== FOOTER ===================== */}
+            <tfoot>
+              <tr className="bg-slate-900 text-white font-semibold">
+                <td
+                  style={{
+                    ...(stickyLeftStyle as React.CSSProperties),
+                    width: colWidths.product,
+                  }}
+                  className="px-4 py-4 text-right uppercase tracking-wide"
+                >
+                  Grand Total
+                </td>
+
+                {globalVariants.map((gv) => (
+                  <td key={gv.id} colSpan={3}></td>
+                ))}
+
+                <td className="px-4 py-4 text-right tabular-nums">
+                  ₹ {footerTotals.subtotal.toFixed(2)}
+                </td>
+                <td className="px-4 py-4 text-right tabular-nums text-amber-300">
+                  ₹ {footerTotals.gst.toFixed(2)}
+                </td>
+                <td className="px-4 py-4 text-right tabular-nums text-emerald-300 text-lg">
+                  ₹ {footerTotals.total.toFixed(2)}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
         </div>
       )}
     </div>
   );
 }
+
+const stickyLeftStyle: React.CSSProperties = {
+  position: "sticky",
+  left: 0,
+  zIndex: 20,
+  background: "#f8fafc",
+};
+
+const headerStyle: React.CSSProperties = {
+  background: "#0f172a",
+  color: "#e5e7eb",
+  fontWeight: 600,
+  borderBottom: "1px solid rgba(255,255,255,0.08)",
+};
+
+const headerLeftStyle: React.CSSProperties = {
+  ...headerStyle,
+  position: "sticky",
+  left: 0,
+  zIndex: 30,
+};

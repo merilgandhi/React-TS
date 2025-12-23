@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useFormik } from "formik";
-import client from "../Services/clientServices";
+import client from "../services/clientServices";
 import { FiX, FiTrash2, FiPlus } from "react-icons/fi";
 import toast from "react-hot-toast";
 import { SuccessToast, ErrorToast } from "./ToastStyles";

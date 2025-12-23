@@ -36,7 +36,7 @@ export const variantCellTotals = (
 ) => {
   const variant = product.variants.find((v) => v.id === variantId);
   if (!variant) return { exists: false };
-
+  
   const strips = getQty(product.id, variantId);
   const { boxes, remaining } = calcBoxes(strips, variant.boxQuantity);
   const subtotal = calcSubtotal(variant.price, strips);

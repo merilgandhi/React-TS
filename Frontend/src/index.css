@@ -3,24 +3,66 @@
 .toast-slide-in {
   animation: slideIn 0.35s ease forwards;
 }
+
 @keyframes slideIn {
-  0% { transform: translateX(40px); opacity: 0; }
-  100% { transform: translateX(0); opacity: 1; }
+  0% {
+    transform: translateX(40px);
+    opacity: 0;
+  }
+
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 .toast-slide-out {
   animation: slideOut 0.35s ease forwards;
 }
+
 @keyframes slideOut {
-  0% { transform: translateX(0); opacity: 1; }
-  100% { transform: translateX(40px); opacity: 0; }
+  0% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateX(40px);
+    opacity: 0;
+  }
 }
 
 .toast-progress {
   height: 3px;
   animation: progressBar linear forwards;
 }
+
 @keyframes progressBar {
-  from { width: 100%; }
-  to { width: 0%; }
+  from {
+    width: 100%;
+  }
+
+  to {
+    width: 0%;
+  }
+}
+
+.cell-input-width {
+  width: 50px;
+  padding: 10px;
+  text-align: center;
+  font-size: 12px;
+  border: 1px solid #cfcfcf;
+  border-radius: 5px;
+  line-height: 16px;
+  -webkit-appearance: none;
+  -moz-appearance: textfield;
+}
+.cell-input-width:disabled{
+  background: #ebe6e6;
+}
+.cell-input-width::-webkit-outer-spin-button,
+.cell-input-width::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }

@@ -82,6 +82,36 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/orders/create"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout>
+                  <CreateOrders/>
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/orders/view/:orderId"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout>
+                  <CreateOrders/>
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/orders/edit/:orderId"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout>
+                  <CreateOrders/>
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
         </Routes>
       </BrowserRouter>
     </>

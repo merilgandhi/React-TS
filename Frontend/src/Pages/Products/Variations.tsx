@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useFormik } from "formik";
 import * as Yup from "yup";
-import client from "../../Services/clientServices";
+import client from "../../services/clientServices";
 import { FiX, FiEdit, FiTrash2 } from "react-icons/fi";
 import { useAuth } from "../../context/AuthContext";
 import toast from "react-hot-toast";
@@ -213,7 +213,7 @@ const Variations = () => {
                             className="text-blue-600 hover:text-blue-800"
                             onClick={() => handleEdit(item)}
                           >
-                            <FiEdit size={18} />
+                            <FiEdit size={18} className="text-amber-400"/>
                           </button>
                           <button
                             className="text-red-600 hover:text-red-800"

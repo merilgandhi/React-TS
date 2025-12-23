@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from "react";
-import client from "../Services/clientServices";
+import client from "../services/clientServices";
 import { FiBox, FiLayers, FiUsers, FiShoppingCart, FiTrendingUp } from "react-icons/fi";
 
 

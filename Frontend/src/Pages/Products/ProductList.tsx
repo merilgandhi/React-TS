@@ -1,7 +1,7 @@
 // --- FINAL FIXED PRODUCT LIST ---
 
 import { useEffect, useState } from "react";
-import client from "../../Services/clientServices";
+import client from "../../services/clientServices";
 import toast from "react-hot-toast";
 import { SuccessToast, ErrorToast } from "../../components/ToastStyles";
 import Pagination from "../../components/Pagination";
@@ -197,10 +197,10 @@ const ProductList = () => {
                     <td className="p-3">
                       <div className="flex gap-3">
                         <button onClick={() => openViewDrawer(product.id)}>
-                          <FiEye size={18} />
+                          <FiEye size={18} className="text-blue-500"/>
                         </button>
                         <button onClick={() => openEditDrawer(product.id)}>
-                          <FiEdit2 size={18} />
+                          <FiEdit2 size={18} className="text-amber-500"/>
                         </button>
                         <button
                           onClick={() => handleDelete(product.id)}
