@@ -46,7 +46,7 @@ const LogIn: React.FC = () => {
 
         login(user, token);
         toast.custom(() => <SuccessToast message="Login successful!" />);
-        navigate("/home");
+        navigate("/dashboard");
       } catch (error: any) {
         setErrors({
           password:

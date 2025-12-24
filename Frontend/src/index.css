@@ -58,11 +58,43 @@
   -webkit-appearance: none;
   -moz-appearance: textfield;
 }
-.cell-input-width:disabled{
+
+.cell-input-width:disabled {
   background: #ebe6e6;
 }
+
 .cell-input-width::-webkit-outer-spin-button,
 .cell-input-width::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
+}
+
+/* ================= PREMIUM SIDEBAR SCROLLBAR ================= */
+.sidebar-scroll {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  /* Firefox */
+  scrollbar-color: rgba(255, 193, 7, 0.45) transparent;
+}
+
+/* Chrome / Edge / Safari */
+.sidebar-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg,
+      rgba(255, 193, 7, 0.55),
+      rgba(255, 193, 7, 0.25));
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 193, 7, 0.75);
 }

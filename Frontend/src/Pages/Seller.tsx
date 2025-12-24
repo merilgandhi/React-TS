@@ -269,7 +269,7 @@ const Sellers = () => {
           open ? "translate-x-0" : "translate-x-full"
         }`}
       >
-        <div className="px-6 py-5 flex justify-between items-center bg-gray-50 border-b">
+        <div className="px-6 py-5 flex justify-between items-center bg-slate-900 text-white border-b">
           <h2 className="text-xl font-semibold">
             {editMode ? "Update Seller" : "Add Seller"}
           </h2>

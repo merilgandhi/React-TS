@@ -20,7 +20,7 @@ const Header: React.FC = () => {
   return (
     <header className="bg-[#0B132B]/90 backdrop-blur-xl text-white shadow-xl border-b border-[#1C2541] sticky top-0 z-30">
       <div className="px-6 py-4 flex items-center justify-between">
-        <Link to="/home" className="flex items-center gap-3 group">
+        <Link to="/dashboard" className="flex items-center gap-3 group">
           <div className="w-10 h-10 rounded-xl bg-[#1C2541]/40 border border-amber-400 shadow-md flex items-center justify-center">
             <img
               src={logo}

@@ -185,7 +185,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
         }`}
       >
         {/* Header */}
-        <div className="flex justify-between p-5 border-b bg-gray-50">
+        <div className="flex justify-between p-5 border-b bg-slate-900 text-white">
           <h2 className="text-xl font-semibold">
             {mode === "create" && "Create Product"}
             {mode === "edit" && "Edit Product"}
@@ -274,7 +274,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
 
                 <div className="border rounded overflow-x-auto">
                   <table className="w-full text-xs">
-                    <thead className="bg-gray-100">
+                    <thead className="bg-slate-900 text-amber-300">
                       <tr>
                         <th className="p-2">Variation</th>
                         <th className="p-2">Price</th>

@@ -1,6 +1,5 @@
 import DashboardLayout from "./layouts/DashboardLayout";
 import ProtectedRoute from "./routes/ProtectedRoute";
-import Home from "./Pages/Home";
 import LogIn from "./Pages/Auth/LogIn";
 import Variations from "./Pages/Products/Variations";
 import ProductList from "./Pages/Products/ProductList"
@@ -9,6 +8,7 @@ import { Toaster } from "react-hot-toast";
 import Seller from "./Pages/Seller";
 import CreateOrders from "./Pages/Orders/CreateOrders";
 import OrderList from "./Pages/Orders/OrdersList";
+import Dashboard from "./Pages/Dashboard";
 
 function App() {
   return (
@@ -19,11 +19,11 @@ function App() {
           <Route path="/" element={<LogIn />} />
 
           <Route
-            path="/home"
+            path="/dashboard"
             element={
               <ProtectedRoute>
                 <DashboardLayout>
-                  <Home />
+                  <Dashboard />
                 </DashboardLayout>
               </ProtectedRoute>
             }
