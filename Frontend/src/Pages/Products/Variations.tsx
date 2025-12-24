@@ -118,11 +118,6 @@ const Variations = () => {
     }
   };
 
-  const getLog = (errors: any) => {
-    console.log("Formik Errors:", errors);
-    return JSON.stringify(errors);
-  };
-
   return (
     <div className="p-6 space-y-4">
       {/* Add Button */}
@@ -213,7 +208,7 @@ const Variations = () => {
                             className="text-blue-600 hover:text-blue-800"
                             onClick={() => handleEdit(item)}
                           >
-                            <FiEdit size={18} className="text-amber-400"/>
+                            <FiEdit size={18} className="text-amber-400" />
                           </button>
                           <button
                             className="text-red-600 hover:text-red-800"
@@ -265,9 +260,8 @@ const Variations = () => {
 
       {/* Drawer */}
       <div
-        className={`fixed top-0 right-0 h-full w-96 bg-white shadow-xl border-l transition-transform duration-300 z-50 ${
-          open ? "translate-x-0" : "translate-x-full"
-        }`}
+        className={`fixed top-0 right-0 h-full w-96 bg-white shadow-xl border-l transition-transform duration-300 z-50 ${open ? "translate-x-0" : "translate-x-full"
+          }`}
       >
         <div className="px-6 py-5 flex justify-between items-center bg-slate-900 text-white border-b">
           <h2 className="text-xl font-semibold">
@@ -280,7 +274,7 @@ const Variations = () => {
               setEditId(null);
               formik.resetForm();
             }}
-            className="text-gray-600 text-2xl"
+            className="text-white text-2xl hover:text-gray-300"
           >
             <FiX />
           </button>
@@ -294,9 +288,13 @@ const Variations = () => {
               name="name"
               value={formik.values.name}
               onChange={formik.handleChange}
-              className="w-full border rounded-md px-3 py-2"
+              onBlur={formik.handleBlur}
+              className={`w-full border rounded-md px-3 py-2 ${formik.touched.name && formik.errors.name
+                  ? "border-red-500 focus:ring-red-500"
+                  : "border-slate-300 focus:ring-slate-500"
+                } focus:ring-2 focus:outline-none`}
             />
-            {formik.errors.name && (
+            {formik.touched.name && formik.errors.name && (
               <div className="text-red-500 text-sm mt-1">
                 {formik.errors.name}
               </div>
@@ -309,23 +307,32 @@ const Variations = () => {
               name="status"
               value={formik.values.status}
               onChange={formik.handleChange}
-              className="w-full border rounded-md px-3 py-2"
+              onBlur={formik.handleBlur}
+              className={`w-full border rounded-md px-3 py-2 ${formik.touched.status && formik.errors.status
+                  ? "border-red-500 focus:ring-red-500"
+                  : "border-slate-300 focus:ring-slate-500"
+                } focus:ring-2 focus:outline-none`}
             >
               <option value="yes">Yes</option>
               <option value="no">No</option>
             </select>
+            {formik.touched.status && formik.errors.status && (
+              <div className="text-red-500 text-sm mt-1">
+                {formik.errors.status}
+              </div>
+            )}
           </div>
 
           <button
             type="submit"
             disabled={formik.isSubmitting}
-            className="w-full bg-slate-900 text-white py-2 rounded-md hover:bg-slate-700"
+            className="w-full bg-slate-900 text-white py-2 rounded-md hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {formik.isSubmitting
               ? "Processing..."
               : editMode
-              ? "Update Variation"
-              : "Save Variation"}
+                ? "Update Variation"
+                : "Save Variation"}
           </button>
         </form>
       </div>

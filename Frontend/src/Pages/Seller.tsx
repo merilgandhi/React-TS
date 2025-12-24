@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useFormik } from "formik";
+import * as Yup from "yup";
 import client from "../services/clientServices";
 import { FiEdit, FiTrash2, FiX } from "react-icons/fi";
 import toast from "react-hot-toast";
@@ -23,12 +25,55 @@ const Sellers = () => {
   const [searchName, setSearchName] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
 
-  // Drawer form
-  const [sellerData, setSellerData] = useState({
-    name: "",
-    email: "",
-    contactNumber: "",
-    isActive: "yes",
+  // Validation Schema
+  const validationSchema = Yup.object({
+    name: Yup.string()
+      .required("Name is required")
+      .min(2, "Name must be at least 2 characters"),
+    email: Yup.string()
+      .required("Email is required")
+      .email("Invalid email format"),
+    contactNumber: Yup.string()
+      .required("Contact number is required")
+      .matches(/^[0-9]{10}$/, "Contact number must be 10 digits"),
+    isActive: Yup.string().required("Status is required"),
+  });
+
+  // Formik
+  const formik = useFormik({
+    initialValues: {
+      name: "",
+      email: "",
+      contactNumber: "",
+      isActive: "yes",
+    },
+    validationSchema,
+    onSubmit: async (values) => {
+      const payload = {
+        name: values.name,
+        email: values.email,
+        contactNumber: values.contactNumber,
+        isActive: values.isActive === "yes",
+      };
+
+      try {
+        if (editMode && editId) {
+          const res = await client.put(`/sellers/${editId}`, payload);
+          toast.custom(() => <SuccessToast message={res.data.message} />);
+        } else {
+          const res = await client.post(`/sellers`, payload);
+          toast.custom(() => <SuccessToast message={res.data.message} />);
+        }
+
+        setOpen(false);
+        fetchSellers();
+        formik.resetForm();
+      } catch (err: any) {
+        toast.custom(() => (
+          <ErrorToast message={err?.response?.data?.message || "Action failed"} />
+        ));
+      }
+    },
   });
 
   // Fetch Sellers
@@ -58,12 +103,7 @@ const Sellers = () => {
   const openCreateDrawer = () => {
     setEditMode(false);
     setEditId(null);
-    setSellerData({
-      name: "",
-      email: "",
-      contactNumber: "",
-      isActive: "yes",
-    });
+    formik.resetForm();
     setOpen(true);
   };
 
@@ -72,7 +112,7 @@ const Sellers = () => {
     setEditMode(true);
     setEditId(seller.id);
 
-    setSellerData({
+    formik.setValues({
       name: seller.name,
       email: seller.email,
       contactNumber: seller.contactNumber,
@@ -95,35 +135,6 @@ const Sellers = () => {
         <ErrorToast
           message={err?.response?.data?.message || "Failed to delete"}
         />
-      ));
-    }
-  };
-
-  // Submit (Create / Update)
-  const submitSeller = async (e: any) => {
-    e.preventDefault();
-
-    const payload = {
-      name: sellerData.name,
-      email: sellerData.email,
-      contactNumber: sellerData.contactNumber,
-      isActive: sellerData.isActive === "yes",
-    };
-
-    try {
-      if (editMode && editId) {
-        const res = await client.put(`/sellers/${editId}`, payload);
-        toast.custom(() => <SuccessToast message={res.data.message} />);
-      } else {
-        const res = await client.post(`/sellers`, payload);
-        toast.custom(() => <SuccessToast message={res.data.message} />);
-      }
-
-      setOpen(false);
-      fetchSellers();
-    } catch (err: any) {
-      toast.custom(() => (
-        <ErrorToast message={err?.response?.data?.message || "Action failed"} />
       ));
     }
   };
@@ -282,54 +293,78 @@ const Sellers = () => {
           </button>
         </div>
 
-        <form onSubmit={submitSeller} className="p-6 space-y-4">
+        <form onSubmit={formik.handleSubmit} className="p-6 space-y-4">
           <div>
             <label className="text-sm font-medium">Name</label>
             <input
               type="text"
-              className="w-full border rounded-md px-3 py-2"
-              value={sellerData.name}
-              onChange={(e) =>
-                setSellerData({ ...sellerData, name: e.target.value })
-              }
+              name="name"
+              className={`w-full border rounded-md px-3 py-2 ${
+                formik.touched.name && formik.errors.name
+                  ? "border-red-500"
+                  : ""
+              }`}
+              value={formik.values.name}
+              onChange={formik.handleChange}
+              onBlur={formik.handleBlur}
             />
+            {formik.touched.name && formik.errors.name && (
+              <div className="text-red-500 text-xs mt-1">
+                {formik.errors.name}
+              </div>
+            )}
           </div>
 
           <div>
             <label className="text-sm font-medium">Email</label>
             <input
               type="email"
-              className="w-full border rounded-md px-3 py-2"
-              value={sellerData.email}
-              onChange={(e) =>
-                setSellerData({ ...sellerData, email: e.target.value })
-              }
+              name="email"
+              className={`w-full border rounded-md px-3 py-2 ${
+                formik.touched.email && formik.errors.email
+                  ? "border-red-500"
+                  : ""
+              }`}
+              value={formik.values.email}
+              onChange={formik.handleChange}
+              onBlur={formik.handleBlur}
             />
+            {formik.touched.email && formik.errors.email && (
+              <div className="text-red-500 text-xs mt-1">
+                {formik.errors.email}
+              </div>
+            )}
           </div>
 
           <div>
             <label className="text-sm font-medium">Contact Number</label>
             <input
               type="text"
-              className="w-full border rounded-md px-3 py-2"
-              value={sellerData.contactNumber}
-              onChange={(e) =>
-                setSellerData({
-                  ...sellerData,
-                  contactNumber: e.target.value,
-                })
-              }
+              name="contactNumber"
+              className={`w-full border rounded-md px-3 py-2 ${
+                formik.touched.contactNumber && formik.errors.contactNumber
+                  ? "border-red-500"
+                  : ""
+              }`}
+              value={formik.values.contactNumber}
+              onChange={formik.handleChange}
+              onBlur={formik.handleBlur}
             />
+            {formik.touched.contactNumber && formik.errors.contactNumber && (
+              <div className="text-red-500 text-xs mt-1">
+                {formik.errors.contactNumber}
+              </div>
+            )}
           </div>
 
           <div>
             <label className="text-sm font-medium">Active</label>
             <select
+              name="isActive"
               className="w-full border rounded-md px-3 py-2"
-              value={sellerData.isActive}
-              onChange={(e) =>
-                setSellerData({ ...sellerData, isActive: e.target.value })
-              }
+              value={formik.values.isActive}
+              onChange={formik.handleChange}
+              onBlur={formik.handleBlur}
             >
               <option value="yes">Yes</option>
               <option value="no">No</option>

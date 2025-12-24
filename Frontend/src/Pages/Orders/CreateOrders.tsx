@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useFormik } from "formik";
+import * as Yup from "yup";
 import toast from "react-hot-toast";
 import { SuccessToast, ErrorToast } from "../../components/ToastStyles";
 import OrderVariantCell from "../../components/OrderVariantCell";
@@ -15,16 +17,9 @@ export default function CreateOrders({
   onSuccess?: () => void;
 }) {
   const { sellers, products, loading } = useOrders();
-
-  const [selectedSeller, setSelectedSeller] = useState<number | "">("");
-  const [orderQuantities, setOrderQuantities] = useState<any>({});
   const [creating, setCreating] = useState(false);
   const [loadingOrder, setLoadingOrder] = useState(false);
   const navigate = useNavigate();
-
-  const getQty = (productId: number, variationId: number) => {
-    return orderQuantities[productId]?.[variationId]?.quantity || 0;
-  };
 
   const { orderId } = useParams<{ orderId: string }>();
   const orderid = orderId ? Number(orderId) : undefined;
@@ -37,21 +32,111 @@ export default function CreateOrders({
       ? "view"
       : "create";
 
+  // Validation Schema
+  const validationSchema = Yup.object({
+    selectedSeller: Yup.number()
+      .required("Please select a seller")
+      .positive("Invalid seller selection"),
+    orderQuantities: Yup.object().test(
+      "has-items",
+      "Please add at least one item to the order",
+      (value) => {
+        if (!value) return false;
+
+        // Check if any quantity > 0
+        return Object.values(value).some((productVariants: any) =>
+          Object.values(productVariants || {}).some(
+            (variantData: any) => (variantData?.quantity || 0) > 0
+          )
+        );
+      }
+    ),
+  });
+
+  // Formik
+  const formik = useFormik({
+    initialValues: {
+      selectedSeller: "" as number | "",
+      orderQuantities: {} as any,
+    },
+    validationSchema,
+    validateOnChange: true,
+    validateOnBlur: true,
+    onSubmit: async (values) => {
+      const items = buildItems(values.orderQuantities);
+
+      try {
+        setCreating(true);
+
+        if (mode === "update") {
+          await OrderService.updateOrder(orderid!, { items });
+          toast.custom(() => <SuccessToast message="Order updated successfully" />);
+        } else {
+          await OrderService.createOrder({
+            sellerId: values.selectedSeller as number,
+            items,
+            grandTotal: grandTotal(
+              products,
+              globalVariants,
+              (productId, variationId) =>
+                values.orderQuantities[productId]?.[variationId]?.quantity || 0
+            ),
+          });
+          toast.custom(() => <SuccessToast message="Order created successfully" />);
+        }
+
+        onSuccess?.();
+        navigate("/orderslist");
+      } catch (error) {
+        console.error("Order submission error:", error);
+        toast.custom(() => <ErrorToast message="Failed to process order" />);
+      } finally {
+        setCreating(false);
+      }
+    },
+  });
+
+  const getQty = (productId: number, variationId: number) => {
+    return formik.values.orderQuantities[productId]?.[variationId]?.quantity || 0;
+  };
+
   const updateQuantity = (
     productId: number,
     variantId: number,
     value: number
   ) => {
-    setOrderQuantities((prev: any) => ({
-      ...prev,
-      [productId]: {
-        ...(prev[productId] || {}),
-        [variantId]: {
-          ...(prev[productId]?.[variantId] || {}),
-          quantity: value,
-        },
-      },
-    }));
+    formik.setFieldValue(`orderQuantities.${productId}.${variantId}`, {
+      ...(formik.values.orderQuantities[productId]?.[variantId] || {}),
+      quantity: value,
+    });
+  };
+
+  const buildItems = (orderQuantities: any) => {
+    const result: any[] = [];
+
+    Object.entries(orderQuantities).forEach(
+      ([productId, variants]: [string, any]) => {
+        Object.entries(variants).forEach(([variantId, data]: [string, any]) => {
+          const qty = Number(data?.quantity || 0);
+
+          if (qty > 0) {
+            const itemData: any = {
+              productId: Number(productId),
+              productVariationId: Number(variantId),
+              quantity: qty,
+            };
+
+            if (mode === "update" && data.orderProductVariationId) {
+              itemData.orderProductVariationId = data.orderProductVariationId;
+            }
+
+            result.push(itemData);
+          }
+        });
+      }
+    );
+
+    return result;
   };
 
   useEffect(() => {
@@ -65,19 +150,19 @@ export default function CreateOrders({
     try {
       setLoadingOrder(true);
       const orderData = await OrderService.getOrderById(id);
-      setSelectedSeller(orderData.seller.id);
+
+      formik.setFieldValue("selectedSeller", orderData.seller.id);
 
       const quantities: any = {};
 
       orderData.items.forEach((item: any) => {
-        // Add null checks for item properties
         if (!item || !item.product || !item.productVariation) {
           console.warn("Skipping invalid item:", item);
           return;
         }
 
         const productId = item.product.id;
-        const productVariationId = item.productVariation.id; // This is the vId in your frontend
+        const productVariationId = item.productVariation.id;
 
         if (!productId || !productVariationId) {
           console.warn("Missing productId or productVariationId:", item);
@@ -90,17 +175,12 @@ export default function CreateOrders({
           return;
         }
 
-        // Match by vId (which corresponds to productVariation.id from API)
         const matchedVariant = product.variants.find(
           (v) => v.vId === productVariationId
         );
 
         if (!matchedVariant) {
-          console.warn(`Variant not found for productVariationId: ${productVariationId}`, {
-            productId,
-            productVariationId,
-            availableVariants: product.variants.map(v => ({ vId: v.vId, id: v.id, name: v.name }))
-          });
+          console.warn(`Variant not found for productVariationId: ${productVariationId}`);
           return;
         }
 
@@ -108,15 +188,13 @@ export default function CreateOrders({
           quantities[productId] = {};
         }
 
-        // Store using vId as the key
         quantities[productId][matchedVariant.vId] = {
           quantity: item.quantity,
           orderProductVariationId: item.id,
         };
       });
 
-      console.log("Loaded quantities:", quantities);
-      setOrderQuantities(quantities);
+      formik.setFieldValue("orderQuantities", quantities);
     } catch (error) {
       console.error("Error fetching order:", error);
       toast.custom(() => <ErrorToast message="Failed to load order data" />);
@@ -159,78 +237,11 @@ export default function CreateOrders({
     });
   }, [globalVariants]);
 
-  const items = useMemo(() => {
-    const result: any[] = [];
-
-    Object.entries(orderQuantities).forEach(
-      ([productId, variants]: [string, any]) => {
-        Object.entries(variants).forEach(([variantId, data]: [string, any]) => {
-          const qty = Number(data?.quantity || 0);
-
-          if (qty > 0) {
-            const itemData: any = {
-              productId: Number(productId),
-              productVariationId: Number(variantId),
-              quantity: qty,
-            };
-
-            // For update mode, include the orderProductVariationId
-            if (mode === "update" && data.orderProductVariationId) {
-              itemData.orderProductVariationId = data.orderProductVariationId;
-            }
-
-            result.push(itemData);
-          }
-        });
-      }
-    );
-
-    return result;
-  }, [orderQuantities, mode]);
-
-  console.log("Items to submit:", items);
-
-  const submitOrder = async () => {
-    if (!selectedSeller) {
-      toast.custom(() => <ErrorToast message="Please select a seller" />);
-      return;
-    }
-
-    if (!items.length) {
-      toast.custom(() => <ErrorToast message="Enter at least one quantity" />);
-      return;
-    }
-
-    try {
-      setCreating(true);
-
-      if (mode === "update") {
-        await OrderService.updateOrder(orderid!, { items });
-        toast.custom(() => <SuccessToast message="Order updated successfully" />);
-      } else {
-        await OrderService.createOrder({
-          sellerId: selectedSeller,
-          items,
-          grandTotal: grandTotal(products, globalVariants, getQty),
-        });
-        toast.custom(() => <SuccessToast message="Order created successfully" />);
-      }
-
-      onSuccess?.();
-      navigate("/orderslist");
-    } catch (error) {
-      console.error("Order submission error:", error);
-      toast.custom(() => <ErrorToast message="Failed to process order" />);
-    } finally {
-      setCreating(false);
-    }
-  };
-
   const colSpan = globalVariants.length * 3 + 4;
 
   const doTotal = useMemo(() => {
     const total: any = {};
-    const orderItem = Object.keys(orderQuantities) as unknown as number[];
+    const orderItem = Object.keys(formik.values.orderQuantities) as unknown as number[];
 
     orderItem.forEach((item: number) => {
       const product = products.find((pro) => pro.id == item);
@@ -241,8 +252,7 @@ export default function CreateOrders({
       let productTotal = 0;
 
       product.variants.forEach((variant) => {
-        // Use variant.vId to match how quantities are stored
-        const qty = Number(orderQuantities[item]?.[variant.vId]?.quantity) || 0;
+        const qty = Number(formik.values.orderQuantities[item]?.[variant.vId]?.quantity) || 0;
         productTotal += qty * Number(variant.price);
       });
 
@@ -255,7 +265,7 @@ export default function CreateOrders({
     });
 
     return total;
-  }, [orderQuantities, products]);
+  }, [formik.values.orderQuantities, products]);
 
   const footerTotals = useMemo(() => {
     let subtotal = 0;
@@ -272,10 +282,11 @@ export default function CreateOrders({
   }, [doTotal]);
 
   return (
-    <div className="p-6 space-y-6">
+    <form onSubmit={formik.handleSubmit} className="p-6 space-y-6">
       {/* Header */}
       {mode !== "create" && (
         <button
+          type="button"
           onClick={() => navigate("/orderslist")}
           className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-slate-700 hover:text-slate-900"
         >
@@ -293,8 +304,8 @@ export default function CreateOrders({
 
         {mode !== "view" && (
           <button
-            onClick={submitOrder}
-            disabled={creating || loadingOrder}
+            type="submit"
+            disabled={creating || loadingOrder || !formik.isValid}
             className="px-4 py-2 bg-slate-900 text-white rounded font-semibold hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {creating
@@ -309,34 +320,53 @@ export default function CreateOrders({
       </div>
 
       {/* Seller Selection */}
-      <div className="bg-white p-4 rounded shadow border flex items-center gap-4">
-        <label className="font-medium text-slate-700">
-          {mode === "create" ? "Select Seller:" : "Seller:"}
-        </label>
-        <select
-          disabled={mode !== "create"}
-          className={`px-3 py-2 border rounded ${mode !== "create" ? "bg-slate-100 cursor-not-allowed text-slate-700" : ""
-            }`}
-          value={selectedSeller}
-          onChange={(e) =>
-            setSelectedSeller(e.target.value ? Number(e.target.value) : "")
-          }
-        >
-          <option value="">-- Choose Seller --</option>
-          {sellers.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
-          ))}
-        </select>
+      <div className="bg-white p-4 rounded shadow border">
+        <div className="flex items-center gap-4">
+          <label className="font-medium text-slate-700">
+            {mode === "create" ? "Select Seller:" : "Seller:"}
+          </label>
+          <div className="flex-1">
+            <select
+              name="selectedSeller"
+              disabled={mode !== "create"}
+              className={`px-3 py-2 border rounded ${mode !== "create" ? "bg-slate-100 cursor-not-allowed text-slate-700" : ""
+                } ${formik.touched.selectedSeller && formik.errors.selectedSeller
+                  ? "border-red-500"
+                  : ""
+                }`}
+              value={formik.values.selectedSeller}
+              onChange={formik.handleChange}
+              onBlur={formik.handleBlur}
+            >
+              <option value="">-- Choose Seller --</option>
+              {sellers.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+            {formik.touched.selectedSeller && formik.errors.selectedSeller && (
+              <div className="text-red-500 text-xs mt-1">
+                {formik.errors.selectedSeller}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
+
+      {/* Validation Error for Items */}
+      {formik.touched.orderQuantities && formik.errors.orderQuantities && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+          {formik.errors.orderQuantities as string}
+        </div>
+      )}
 
       {loadingOrder ? (
         <div className="bg-white p-8 rounded shadow text-center border">
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900 mb-4"></div>
           <p className="text-slate-600">Loading order details...</p>
         </div>
-      ) : !selectedSeller && mode === "create" ? (
+      ) : !formik.values.selectedSeller && mode === "create" ? (
         <div className="bg-white p-6 rounded shadow text-center text-slate-500 border">
           Please select a seller to view products & variants.
         </div>
@@ -348,7 +378,6 @@ export default function CreateOrders({
           >
             <thead>
               <tr>
-                {/* Product Header */}
                 <th
                   style={{
                     ...headerLeftStyle,
@@ -359,7 +388,6 @@ export default function CreateOrders({
                   Product
                 </th>
 
-                {/* Variant Headers */}
                 {globalVariants.map((gv) => (
                   <th
                     key={gv.id}
@@ -394,7 +422,6 @@ export default function CreateOrders({
               </tr>
             </thead>
 
-            {/* ===================== BODY ===================== */}
             <tbody>
               {loading ? (
                 <tr>
@@ -420,7 +447,6 @@ export default function CreateOrders({
                     key={product.id}
                     className="align-top hover:bg-slate-50 transition-colors"
                   >
-                    {/* Product Name */}
                     <td
                       style={{
                         ...(stickyLeftStyle as React.CSSProperties),
@@ -431,7 +457,6 @@ export default function CreateOrders({
                       {product.name}
                     </td>
 
-                    {/* Variant Cells */}
                     {globalVariants.map((gv, index) => {
                       const item = product.variants.find((v) => v.id === gv.id);
 
@@ -456,7 +481,6 @@ export default function CreateOrders({
                       );
                     })}
 
-                    {/* Row Totals */}
                     <td className="px-4 py-3 text-right border-r tabular-nums text-slate-700">
                       {doTotal[product.id]?.productTotal?.toFixed(2) || "0.00"}
                     </td>
@@ -471,7 +495,6 @@ export default function CreateOrders({
               )}
             </tbody>
 
-            {/* ===================== FOOTER ===================== */}
             <tfoot>
               <tr className="bg-slate-900 text-white font-semibold">
                 <td
@@ -502,7 +525,7 @@ export default function CreateOrders({
           </table>
         </div>
       )}
-    </div>
+    </form>
   );
 }
 
