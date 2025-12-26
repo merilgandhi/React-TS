@@ -218,7 +218,7 @@ export default function CreateOrders({
   }, [products]);
 
   const [colWidths, setColWidths] = useState<Record<string, number>>({
-    product: 220,
+    product: 120,
     subtotal: 120,
     gst: 100,
     total: 120,

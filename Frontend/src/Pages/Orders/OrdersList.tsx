@@ -4,9 +4,11 @@ import client from "../../services/clientServices";
 import toast from "react-hot-toast";
 import { ErrorToast } from "../../components/ToastStyles";
 import { useNavigate } from "react-router-dom";
+import DeleteConfirmation from "../../components/DeleteConfirmation";
 const OrdersList = () => {
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [deleteModal, setDeleteModal] = useState<{ open: boolean; orderId: number | null; isDeleting: boolean }>({ open: false, orderId: null, isDeleting: false });
   const navigate = useNavigate();
 
   const fetchOrders = async () => {
@@ -25,15 +27,26 @@ const OrdersList = () => {
     fetchOrders();
   }, []);
 
-  const handleDelete = async (orderId: number) => {
-    if (!window.confirm("Are you sure you want to delete this order?")) return;
 
+  const openDeleteModal = (orderId: number) => {
+    setDeleteModal({ open: true, orderId, isDeleting: false });
+  };
+
+  const closeDeleteModal = () => {
+    setDeleteModal({ open: false, orderId: null, isDeleting: false });
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (deleteModal.orderId == null) return;
+    setDeleteModal((prev) => ({ ...prev, isDeleting: true }));
     try {
-      await client.delete(`/orders/${orderId}`);
+      await client.delete(`/orders/${deleteModal.orderId}`);
       toast.custom(() => <ErrorToast message="Order deleted" />);
+      closeDeleteModal();
       fetchOrders();
     } catch {
       toast.custom(() => <ErrorToast message="Failed to delete order" />);
+      setDeleteModal((prev) => ({ ...prev, isDeleting: false }));
     }
   };
 
@@ -119,7 +132,7 @@ const OrdersList = () => {
                     />
                     <FiTrash2
                       className="cursor-pointer text-red-600 hover:text-red-800"
-                      onClick={() => handleDelete(order.id)}
+                      onClick={() => openDeleteModal(order.id)}
                     />
                   </div>
                 </td>
@@ -136,6 +149,20 @@ const OrdersList = () => {
           </tbody>
         </table>
       </div>
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmation
+        isOpen={deleteModal.open}
+        onClose={closeDeleteModal}
+        onConfirm={handleDeleteConfirm}
+        isDeleting={deleteModal.isDeleting}
+        itemName={
+          orders.find((o) => o.id === deleteModal.orderId)?.id
+            ? `Order #${orders.find((o) => o.id === deleteModal.orderId)?.id}`
+            : undefined
+        }
+        title="Delete Order"
+        message="Are you sure you want to delete"
+      />
     </div>
   );
 };

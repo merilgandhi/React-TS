@@ -6,6 +6,7 @@ import { FiEdit, FiTrash2, FiX } from "react-icons/fi";
 import toast from "react-hot-toast";
 import Pagination from "../components/Pagination";
 import { SuccessToast, ErrorToast } from "../components/ToastStyles";
+import DeleteConfirmation from "../components/DeleteConfirmation";
 
 const Sellers = () => {
   // Drawer State
@@ -122,13 +123,24 @@ const Sellers = () => {
     setOpen(true);
   };
 
-  // Delete Seller
-  const handleDelete = async (id: number) => {
-    if (!window.confirm("Delete this seller?")) return;
+  // Delete Confirmation State
+  const [deleteModal, setDeleteModal] = useState<{ open: boolean; sellerId: number | null; isDeleting: boolean }>({ open: false, sellerId: null, isDeleting: false });
 
+  const openDeleteModal = (sellerId: number) => {
+    setDeleteModal({ open: true, sellerId, isDeleting: false });
+  };
+
+  const closeDeleteModal = () => {
+    setDeleteModal({ open: false, sellerId: null, isDeleting: false });
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (deleteModal.sellerId == null) return;
+    setDeleteModal((prev) => ({ ...prev, isDeleting: true }));
     try {
-      const res = await client.delete(`/sellers/${id}`);
+      const res = await client.delete(`/sellers/${deleteModal.sellerId}`);
       toast.custom(() => <SuccessToast message={res.data.message} />);
+      closeDeleteModal();
       fetchSellers();
     } catch (err: any) {
       toast.custom(() => (
@@ -136,6 +148,7 @@ const Sellers = () => {
           message={err?.response?.data?.message || "Failed to delete"}
         />
       ));
+      setDeleteModal((prev) => ({ ...prev, isDeleting: false }));
     }
   };
 
@@ -230,7 +243,7 @@ const Sellers = () => {
 
                       <button
                         className="text-red-600 hover:text-red-800"
-                        onClick={() => handleDelete(seller.id)}
+                        onClick={() => openDeleteModal(seller.id)}
                       >
                         <FiTrash2 size={18} />
                       </button>
@@ -387,6 +400,18 @@ const Sellers = () => {
           onClick={() => setOpen(false)}
         />
       )}
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmation
+        isOpen={deleteModal.open}
+        onClose={closeDeleteModal}
+        onConfirm={handleDeleteConfirm}
+        isDeleting={deleteModal.isDeleting}
+        itemName={
+          sellers.find((s) => s.id === deleteModal.sellerId)?.name
+        }
+        title="Delete Seller"
+        message="Are you sure you want to delete"
+      />
     </div>
   );
 };

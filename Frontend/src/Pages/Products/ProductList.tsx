@@ -1,4 +1,3 @@
-// --- FINAL FIXED PRODUCT LIST ---
 
 import { useEffect, useState } from "react";
 import client from "../../services/clientServices";
@@ -7,6 +6,7 @@ import { SuccessToast, ErrorToast } from "../../components/ToastStyles";
 import Pagination from "../../components/Pagination";
 import ProductForm from "../../components/ProductForm";
 import { FiEye, FiEdit2, FiTrash2 } from "react-icons/fi";
+import DeleteConfirmation from "../../components/DeleteConfirmation";
 
 interface ProductVariant {
   variationId?: number;
@@ -83,21 +83,34 @@ const ProductList = () => {
     setDrawerOpen(true);
   };
 
-  const handleDelete = async (id: number) => {
-    if (!window.confirm("Are you sure?")) return;
+  // Delete Confirmation State
+  const [deleteModal, setDeleteModal] = useState<{ open: boolean; productId: number | null; isDeleting: boolean }>({ open: false, productId: null, isDeleting: false });
 
+  const openDeleteModal = (productId: number) => {
+    setDeleteModal({ open: true, productId, isDeleting: false });
+  };
+
+  const closeDeleteModal = () => {
+    setDeleteModal({ open: false, productId: null, isDeleting: false });
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (deleteModal.productId == null) return;
+    setDeleteModal((prev) => ({ ...prev, isDeleting: true }));
     try {
-      const res = await client.delete(`/products/${id}`);
+      const res = await client.delete(`/products/${deleteModal.productId}`);
       toast.custom(() => (
         <SuccessToast
           message={res?.data?.message || "Product deleted successfully"}
         />
       ));
+      closeDeleteModal();
       fetchProducts();
     } catch (err: any) {
       toast.custom(() => (
         <ErrorToast message={err?.response?.data?.message || "Delete failed"} />
       ));
+      setDeleteModal((prev) => ({ ...prev, isDeleting: false }));
     }
   };
 
@@ -203,7 +216,7 @@ const ProductList = () => {
                           <FiEdit2 size={18} className="text-amber-500"/>
                         </button>
                         <button
-                          onClick={() => handleDelete(product.id)}
+                          onClick={() => openDeleteModal(product.id)}
                           className="text-red-600"
                         >
                           <FiTrash2 size={18} />
@@ -253,6 +266,18 @@ const ProductList = () => {
         productId={selectedProductId}
         onClose={() => setDrawerOpen(false)}
         onSuccess={fetchProducts}
+      />
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmation
+        isOpen={deleteModal.open}
+        onClose={closeDeleteModal}
+        onConfirm={handleDeleteConfirm}
+        isDeleting={deleteModal.isDeleting}
+        itemName={
+          products.find((p) => p.id === deleteModal.productId)?.name
+        }
+        title="Delete Product"
+        message="Are you sure you want to delete"
       />
     </div>
   );

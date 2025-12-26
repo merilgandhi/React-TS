@@ -7,24 +7,25 @@ import { useAuth } from "../../context/AuthContext";
 import toast from "react-hot-toast";
 import Pagination from "../../components/Pagination";
 import { SuccessToast, ErrorToast } from "../../components/ToastStyles";
+import DeleteConfirmation from "../../components/DeleteConfirmation";
 
 const Variations = () => {
   const { user } = useAuth();
-
-  // Drawer States
   const [open, setOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
-
-  // Table Data
   const [variations, setVariations] = useState<any[]>([]);
-
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [limit, setLimit] = useState("5");
-
   const [searchName, setSearchName] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+
+  // Delete Confirmation States
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [deleteItemName, setDeleteItemName] = useState<string>("");
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const validationSchema = Yup.object({
     name: Yup.string().required("Variation name is required"),
@@ -102,19 +103,31 @@ const Variations = () => {
     setOpen(true);
   };
 
-  const handleDelete = async (id: number) => {
-    if (!window.confirm("Delete this variation?")) return;
+  const openDeleteModal = (item: any) => {
+    setDeleteId(item.id);
+    setDeleteItemName(item.name);
+    setShowDeleteModal(true);
+  };
 
+  const handleDelete = async () => {
+    if (!deleteId) return;
+
+    setIsDeleting(true);
     try {
-      await client.delete(`/variations/${id}`);
-      toast.custom(() => <ErrorToast message="Variation deleted!" />);
+      await client.delete(`/variations/${deleteId}`);
+      toast.custom(() => <SuccessToast message="Variation deleted!" />);
       fetchVariations();
+      setShowDeleteModal(false);
     } catch (err: any) {
       toast.custom(() => (
         <ErrorToast
           message={err?.response?.data?.message || "Failed to delete"}
         />
       ));
+    } finally {
+      setIsDeleting(false);
+      setDeleteId(null);
+      setDeleteItemName("");
     }
   };
 
@@ -212,7 +225,7 @@ const Variations = () => {
                           </button>
                           <button
                             className="text-red-600 hover:text-red-800"
-                            onClick={() => handleDelete(item.id)}
+                            onClick={() => openDeleteModal(item)}
                           >
                             <FiTrash2 size={18} />
                           </button>
@@ -290,8 +303,8 @@ const Variations = () => {
               onChange={formik.handleChange}
               onBlur={formik.handleBlur}
               className={`w-full border rounded-md px-3 py-2 ${formik.touched.name && formik.errors.name
-                  ? "border-red-500 focus:ring-red-500"
-                  : "border-slate-300 focus:ring-slate-500"
+                ? "border-red-500 focus:ring-red-500"
+                : "border-slate-300 focus:ring-slate-500"
                 } focus:ring-2 focus:outline-none`}
             />
             {formik.touched.name && formik.errors.name && (
@@ -309,8 +322,8 @@ const Variations = () => {
               onChange={formik.handleChange}
               onBlur={formik.handleBlur}
               className={`w-full border rounded-md px-3 py-2 ${formik.touched.status && formik.errors.status
-                  ? "border-red-500 focus:ring-red-500"
-                  : "border-slate-300 focus:ring-slate-500"
+                ? "border-red-500 focus:ring-red-500"
+                : "border-slate-300 focus:ring-slate-500"
                 } focus:ring-2 focus:outline-none`}
             >
               <option value="yes">Yes</option>
@@ -349,6 +362,21 @@ const Variations = () => {
           }}
         />
       )}
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmation
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setDeleteId(null);
+          setDeleteItemName("");
+        }}
+        onConfirm={handleDelete}
+        title="Delete Variation"
+        message="Are you sure you want to delete the variation"
+        itemName={deleteItemName}
+        isDeleting={isDeleting}
+      />
     </div>
   );
 };
